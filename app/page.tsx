@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react"
 import type React from "react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -29,6 +29,8 @@ const AVAILABLE_MODELS = [
   { id: "@cf/google/gemma-7b-it", name: "Google Gemma 7B" },
 ]
 
+const MAX_INPUT_CHARS = 8000 // Cloudflare Worker AI input limit
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -39,6 +41,7 @@ export default function ChatPage() {
   const [showSettings, setShowSettings] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const [charCount, setCharCount] = useState(0)
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -56,9 +59,9 @@ export default function ChatPage() {
     }
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!input.trim() || isLoading || charCount > MAX_INPUT_CHARS) return
 
     // Cancel any ongoing request
     if (abortControllerRef.current) {
@@ -77,6 +80,7 @@ export default function ChatPage() {
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
+    setCharCount(0)
     setIsLoading(true)
     setError(null)
 
@@ -192,6 +196,19 @@ export default function ChatPage() {
       setIsLoading(false)
       abortControllerRef.current = null
     }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value
+    setInput(value)
+    setCharCount(value.length)
   }
 
   const copyToClipboard = async (text: string, messageId: string) => {
@@ -338,18 +355,50 @@ export default function ChatPage() {
         </CardContent>
 
         <CardFooter className="border-t p-4">
-          <form onSubmit={handleSubmit} className="flex w-full gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask ${getModelName(selectedModel)} anything...`}
-              className="flex-1"
-              disabled={isLoading}
-            />
-            <Button type="submit" disabled={isLoading || !input.trim()}>
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </form>
+          <div className="flex flex-col w-full gap-2">
+            <div className="flex w-full gap-2">
+              <div className="flex-1 relative">
+                <Textarea
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Ask ${getModelName(selectedModel)} anything... (Ctrl+Enter to send)`}
+                  className="min-h-[60px] max-h-[200px] resize-none pr-16"
+                  disabled={isLoading}
+                  maxLength={MAX_INPUT_CHARS + 100} // Allow slight overflow for better UX
+                />
+                <div
+                  className={`absolute bottom-2 right-2 text-xs ${
+                    charCount > MAX_INPUT_CHARS
+                      ? "text-red-500 font-medium"
+                      : charCount > MAX_INPUT_CHARS * 0.9
+                        ? "text-yellow-600"
+                        : "text-gray-400"
+                  }`}
+                >
+                  {charCount}/{MAX_INPUT_CHARS}
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={isLoading || !input.trim() || charCount > MAX_INPUT_CHARS}
+                className="self-end"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+            {charCount > MAX_INPUT_CHARS && (
+              <div className="text-sm text-red-500 flex items-center gap-1">
+                <span className="font-medium">⚠️</span>
+                Input exceeds maximum length by {charCount - MAX_INPUT_CHARS} characters. Please shorten your message.
+              </div>
+            )}
+            <div className="text-xs text-gray-500">
+              Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs">Ctrl</kbd> +{" "}
+              <kbd className="px-1 py-0.5 bg-gray-100 rounded text-xs">Enter</kbd> to send
+            </div>
+          </div>
         </CardFooter>
       </Card>
     </div>

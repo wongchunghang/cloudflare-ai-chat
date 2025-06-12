@@ -231,7 +231,7 @@ export default function ChatPage() {
         <CardHeader className="border-b">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-center">Cloudflare AI Chatbot</CardTitle>
+              <CardTitle className="text-center">CH AI Assistant   </CardTitle>
               <p className="text-sm text-gray-500 text-center">Multi-model streaming responses with Markdown</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)} className="p-2">

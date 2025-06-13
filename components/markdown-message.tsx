@@ -1,8 +1,5 @@
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-// Fix: Import from CJS version instead of ESM
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter/dist/cjs/prism"
-import { tomorrow } from "react-syntax-highlighter/dist/cjs/styles/prism"
 
 interface MarkdownMessageProps {
   content: string
@@ -28,9 +25,11 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
           code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "")
             return !inline && match ? (
-              <SyntaxHighlighter style={tomorrow} language={match[1]} PreTag="div" className="rounded-md" {...props}>
-                {String(children).replace(/\n$/, "")}
-              </SyntaxHighlighter>
+              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              </pre>
             ) : (
               <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>
                 {children}

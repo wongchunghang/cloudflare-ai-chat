@@ -24,12 +24,20 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
         components={{
           code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "")
-            return !inline && match ? (
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              </pre>
+            const language = match ? match[1] : null
+
+            return !inline && language ? (
+              <div className="relative rounded-lg overflow-hidden mb-4">
+                {/* Language indicator */}
+                <div className="absolute top-0 right-0 bg-gray-800 text-gray-300 text-xs px-2 py-1 rounded-bl font-mono">
+                  {formatLanguageName(language)}
+                </div>
+                <pre className="bg-gray-900 text-gray-100 p-4 pt-8 rounded-lg overflow-x-auto">
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              </div>
             ) : (
               <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>
                 {children}
@@ -78,4 +86,40 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
       </ReactMarkdown>
     </div>
   )
+}
+
+// Helper function to format language names nicely
+function formatLanguageName(language: string): string {
+  if (!language) return "text"
+
+  // Map of common language identifiers to display names
+  const languageMap: Record<string, string> = {
+    js: "JavaScript",
+    jsx: "JSX",
+    ts: "TypeScript",
+    tsx: "TSX",
+    py: "Python",
+    rb: "Ruby",
+    java: "Java",
+    go: "Go",
+    rs: "Rust",
+    cs: "C#",
+    cpp: "C++",
+    c: "C",
+    php: "PHP",
+    html: "HTML",
+    css: "CSS",
+    scss: "SCSS",
+    sql: "SQL",
+    sh: "Shell",
+    bash: "Bash",
+    md: "Markdown",
+    json: "JSON",
+    yaml: "YAML",
+    toml: "TOML",
+    xml: "XML",
+    dockerfile: "Dockerfile",
+  }
+
+  return languageMap[language.toLowerCase()] || language.toUpperCase()
 }

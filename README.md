@@ -9,7 +9,7 @@
 
 A modern, responsive AI chatbot built with Next.js that leverages Cloudflare Workers AI for inference. This project demonstrates how to create a streaming AI chat interface that supports multiple AI models through Cloudflare's AI platform.
 
-![Chatbot Screenshot](https://via.placeholder.com/800x450.png?text=Cloudflare+AI+Chatbot)
+![Chatbot Screenshot](https://media.licdn.com/dms/image/v2/D5622AQG2eZo4Lbzd6A/feedshare-shrink_800/B56Zehh7.sG0Ag-/0/1750761718352?e=1753920000&v=beta&t=e2Y5z_m2h2sgarg0lCXHQqHZwUGuBB9SxmOBcaT0mkk)
 
 ## Features
 

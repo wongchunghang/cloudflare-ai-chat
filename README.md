@@ -462,23 +462,14 @@ The chatbot supports various Cloudflare AI models:
   
 
 | Model ID | Description |
-
 |----------|-------------|
-
 | `@cf/meta/llama-3.1-8b-instruct` | Llama 3.1 8B (Default) |
-
 | `@cf/meta/llama-3.1-70b-instruct` | Llama 3.1 70B |
-
 | `@cf/meta/llama-3-8b-instruct` | Llama 3 8B |
-
 | `@cf/mistral/mistral-7b-instruct-v0.1` | Mistral 7B |
-
 | `@cf/microsoft/phi-2` | Microsoft Phi-2 |
-
 | `@cf/qwen/qwen1.5-14b-chat-awq` | Qwen 1.5 14B |
-
 | `@cf/google/gemma-7b-it` | Google Gemma 7B |
-
   
 
 You can add or remove models by modifying the `AVAILABLE_MODELS` array in `app/page.tsx`.

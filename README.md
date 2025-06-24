@@ -56,7 +56,7 @@ The frontend is built with Next.js App Router and uses the following key compone
 
 The Cloudflare Worker serves as the AI inference endpoint. Here's a basic implementation:
 
-\`\`\`js
+\\\js
 // Example Cloudflare Worker code (worker.js)
 export default {
   async fetch(request, env) {
@@ -115,7 +115,7 @@ function handleCORS() {
     headers: corsHeaders
   });
 }
-\`\`\`
+\\\
 
 #### Key Worker Implementation Details:
 
@@ -140,34 +140,34 @@ function handleCORS() {
 ### Local Development
 
 1. **Clone the repository**:
-   \`\`\`bash
+   \\\bash
    git clone https://github.com/yourusername/nextjs-cloudflare-ai-chatbot.git
    cd nextjs-cloudflare-ai-chatbot
-   \`\`\`
+   \\\
 
 2. **Install dependencies**:
-   \`\`\`bash
+   \\\bash
    npm install
    # or
    yarn install
    # or
    pnpm install
-   \`\`\`
+   \\\
 
 3. **Set up environment variables**:
    Create a `.env.local` file in the project root:
-   \`\`\`
+   \\\
    CLOUDFLARE_WORKER_URL=https://your-worker-url.workers.dev
-   \`\`\`
+   \\\
 
 4. **Run the development server**:
-   \`\`\`bash
+   \\\bash
    npm run dev
    # or
    yarn dev
    # or
    pnpm dev
-   \`\`\`
+   \\\
 
 5. **Open your browser**:
    Navigate to [http://localhost:3000](http://localhost:3000)
@@ -175,29 +175,29 @@ function handleCORS() {
 ### Deploying the Cloudflare Worker
 
 1. **Install Wrangler CLI**:
-   \`\`\`bash
+   \\\bash
    npm install -g wrangler
-   \`\`\`
+   \\\
 
 2. **Create a new Worker**:
-   \`\`\`bash
+   \\\bash
    wrangler init ai-chatbot-worker
-   \`\`\`
+   \\\
 
 3. **Configure `wrangler.toml`**:
-   \`\`\`toml
+   \\\toml
    name = "ai-chatbot-worker"
    main = "src/worker.js"
    compatibility_date = "2023-10-30"
 
    [ai]
    binding = "AI"
-   \`\`\`
+   \\\
 
 4. **Deploy the Worker**:
-   \`\`\`bash
+   \\\bash
    wrangler deploy
-   \`\`\`
+   \\\
 
 5. **Note the Worker URL**:
    After deployment, note the URL of your Worker (e.g., `https://ai-chatbot-worker.yourusername.workers.dev`)
@@ -214,9 +214,9 @@ function handleCORS() {
 
 3. **Set environment variables**:
    Add the following environment variable in the Vercel project settings:
-   \`\`\`
+   \\\
    CLOUDFLARE_WORKER_URL=https://your-worker-url.workers.dev
-   \`\`\`
+   \\\
 
 4. **Deploy**:
    Click "Deploy" and wait for the deployment to complete.

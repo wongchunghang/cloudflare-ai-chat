@@ -5,7 +5,7 @@
 [![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/wongchunghangs-projects/v0-simple-next-js)
 [![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/ysPulsovW1v)
 
-# Next.js Cloudflare AI Chatbot
+# Ai Chatbot built using Next.js and Cloudflare AI worker API
 
 A modern, responsive AI chatbot built with Next.js that leverages Cloudflare Workers AI for inference. This project demonstrates how to create a streaming AI chat interface that supports multiple AI models through Cloudflare's AI platform.
 
@@ -30,25 +30,6 @@ A modern, responsive AI chatbot built with Next.js that leverages Cloudflare Wor
 - Vercel account for deployment
 
 ## Implementation Guide
-
-### Project Structure
-
-\`\`\`
-├── app/
-│   ├── api/
-│   │   └── chat/
-│   │       └── route.ts      # API route for handling chat requests
-│   ├── globals.css           # Global styles
-│   ├── layout.tsx            # Root layout component
-│   └── page.tsx              # Main chat interface
-├── components/
-│   ├── markdown-message.tsx  # Markdown rendering component
-│   └── theme-provider.tsx    # Theme context provider
-├── lib/
-│   └── utils.ts              # Utility functions
-├── .env.local                # Environment variables
-└── package.json              # Project dependencies
-\`\`\`
 
 ### Frontend Implementation (Next.js)
 

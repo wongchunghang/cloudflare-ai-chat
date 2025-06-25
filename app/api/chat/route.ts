@@ -112,18 +112,21 @@ function containsTable(text: string): boolean {
 // Helper function to count columns in a table row
 function countColumns(row: string): number {
   if (!row.includes("|")) return 0
-  // Count the number of | characters and add 1, but subtract 2 if row starts and ends with |
-  const pipes = (row.match(/\|/g) || []).length
-  const startsWithPipe = row.trim().startsWith("|")
-  const endsWithPipe = row.trim().endsWith("|")
 
-  if (startsWithPipe && endsWithPipe) {
-    return pipes - 1
-  } else if (startsWithPipe || endsWithPipe) {
-    return pipes
-  } else {
-    return pipes + 1
-  }
+  let cleaned = row.trim()
+
+  // Remove leading and trailing pipes if they exist
+  if (cleaned.startsWith("|")) cleaned = cleaned.substring(1)
+  if (cleaned.endsWith("|")) cleaned = cleaned.substring(0, cleaned.length - 1)
+
+  // Split by | and count non-empty cells
+  const cells = cleaned
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => cell.length > 0)
+
+  console.log(`Column count for "${row}": ${cells.length} cells`)
+  return cells.length
 }
 
 // Helper function to normalize a table row to have the specified number of columns
@@ -133,14 +136,14 @@ function normalizeTableRow(row: string, targetColumns: number): string {
   let cleaned = row.trim()
 
   // Remove leading/trailing pipes temporarily to work with cell content
-  const startsWithPipe = cleaned.startsWith("|")
-  const endsWithPipe = cleaned.endsWith("|")
-
-  if (startsWithPipe) cleaned = cleaned.substring(1)
-  if (endsWithPipe) cleaned = cleaned.substring(0, cleaned.length - 1)
+  if (cleaned.startsWith("|")) cleaned = cleaned.substring(1)
+  if (cleaned.endsWith("|")) cleaned = cleaned.substring(0, cleaned.length - 1)
 
   // Split by | and clean up each cell
   let cells = cleaned.split("|").map((cell) => cell.trim())
+
+  console.log(`Normalizing row with ${cells.length} cells to ${targetColumns} columns`)
+  console.log(`Original cells:`, cells)
 
   // Adjust number of cells to match target
   if (cells.length > targetColumns) {
@@ -148,20 +151,30 @@ function normalizeTableRow(row: string, targetColumns: number): string {
     const extraCells = cells.slice(targetColumns - 1)
     cells = cells.slice(0, targetColumns - 1)
     cells.push(extraCells.join(" | "))
+    console.log(`Merged extra cells into last column`)
   } else if (cells.length < targetColumns) {
     // Too few cells - add empty cells
     while (cells.length < targetColumns) {
       cells.push("")
     }
+    console.log(`Added empty cells to reach target`)
   }
 
+  console.log(`Final cells:`, cells)
+
   // Reconstruct the row
-  return "| " + cells.join(" | ") + " |"
+  const result = "| " + cells.join(" | ") + " |"
+  console.log(`Normalized result: "${result}"`)
+  return result
 }
 
 // Helper function to create a separator row
 function createSeparatorRow(columns: number): string {
-  return "| " + "--- | ".repeat(columns - 1) + "--- |"
+  console.log(`Creating separator row for ${columns} columns`)
+  const separators = Array(columns).fill("---")
+  const result = "| " + separators.join(" | ") + " |"
+  console.log(`Created separator: "${result}"`)
+  return result
 }
 
 // Helper function to parse and fix table structure

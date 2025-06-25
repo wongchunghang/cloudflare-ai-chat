@@ -231,8 +231,18 @@ export default function ChatPage() {
         <CardHeader className="border-b">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-center">CH AI Assistant   </CardTitle>
+              <CardTitle className="text-center">CH AI Assistant</CardTitle>
               <p className="text-sm text-gray-500 text-center">Multi-model streaming responses with Markdown</p>
+              <div className="text-center mt-2">
+                <a
+                  href="/table-test"
+                  className="text-xs text-blue-500 hover:text-blue-700 underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  🔧 Table Test Page
+                </a>
+              </div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)} className="p-2">
               <Settings className="h-4 w-4" />

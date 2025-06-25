@@ -115,14 +115,8 @@ function fixTableRow(row: string): string {
 
   let fixed = row.trim()
 
-  // Handle separator rows
-  if (fixed.includes("--") || fixed.includes("-")) {
-    // Count expected columns from the row structure
-    const pipes = (fixed.match(/\|/g) || []).length
-    const expectedCols = pipes > 0 ? pipes + 1 : 3 // Default to 3 columns if unclear
-
-    // Create proper separator row
-    fixed = "|" + " --- |".repeat(expectedCols - 1) + " --- |"
+  // Don't process separator rows here - let parseAndFixTable handle them
+  if (/^[\s|:-]+$/.test(fixed)) {
     return fixed
   }
 
@@ -137,8 +131,8 @@ function fixTableRow(row: string): string {
   // Clean up spacing around pipes
   fixed = fixed.replace(/\s*\|\s*/g, " | ")
 
-  // Fix double pipes
-  fixed = fixed.replace(/\|\s*\|\s*/g, " | ")
+  // Fix double pipes and empty cells
+  fixed = fixed.replace(/\|\s*\|\s*/g, " |  | ")
 
   return fixed
 }
@@ -148,25 +142,40 @@ function parseAndFixTable(tableText: string): string[] {
   const lines = tableText
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+    .filter((line) => line.length > 0 && line.includes("|"))
+
+  if (lines.length === 0) return []
+
   const fixedRows = []
+  let headerProcessed = false
+  let separatorAdded = false
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
-    if (line.includes("|")) {
-      const fixedRow = fixTableRow(line)
-      fixedRows.push(fixedRow)
+    // Skip if this is already a separator row (contains only |, -, :, and spaces)
+    if (/^[\s|:-]+$/.test(line)) {
+      // Only add one separator row after header
+      if (!separatorAdded && headerProcessed) {
+        const colCount = (fixedRows[0].match(/\|/g) || []).length - 1
+        const separator = "|" + " --- |".repeat(colCount) + " --- |"
+        fixedRows.push(separator)
+        separatorAdded = true
+      }
+      continue
+    }
 
-      // If this is the first data row (header), add separator if missing
-      if (i === 0 && lines.length > 1) {
-        const nextLine = lines[i + 1]
-        if (!nextLine.includes("--") && !nextLine.includes("-")) {
-          // Count columns in header to create proper separator
-          const colCount = (fixedRow.match(/\|/g) || []).length - 1
-          const separator = "|" + " --- |".repeat(colCount) + " --- |"
-          fixedRows.push(separator)
-        }
+    const fixedRow = fixTableRow(line)
+    fixedRows.push(fixedRow)
+
+    // After processing the first row (header), add separator if not already added
+    if (!headerProcessed) {
+      headerProcessed = true
+      if (!separatorAdded) {
+        const colCount = (fixedRow.match(/\|/g) || []).length - 1
+        const separator = "|" + " --- |".repeat(colCount) + " --- |"
+        fixedRows.push(separator)
+        separatorAdded = true
       }
     }
   }

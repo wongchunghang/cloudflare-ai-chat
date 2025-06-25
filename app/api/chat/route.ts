@@ -448,7 +448,7 @@ export async function POST(req: Request) {
               } else if (chunk.type === "table-row") {
                 // Check if next chunk is also a table row
                 if (nextChunk && nextChunk.type === "table-row") {
-                  textToSend += "\n\n" // Single newline between table rows
+                  textToSend += "\n" // Single newline between table rows
                 } else {
                   textToSend += "\n\n" // Double newline after table ends
                 }

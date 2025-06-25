@@ -125,7 +125,7 @@ function countColumns(row: string): number {
     .map((cell) => cell.trim())
     .filter((cell) => cell.length > 0)
 
-  console.log(`Column count for "${row}": ${cells.length} cells`)
+  console.log(`[SERVER] Column count for "${row}": ${cells.length} cells`)
   return cells.length
 }
 
@@ -142,8 +142,8 @@ function normalizeTableRow(row: string, targetColumns: number): string {
   // Split by | and clean up each cell
   let cells = cleaned.split("|").map((cell) => cell.trim())
 
-  console.log(`Normalizing row with ${cells.length} cells to ${targetColumns} columns`)
-  console.log(`Original cells:`, cells)
+  console.log(`[SERVER] Normalizing row with ${cells.length} cells to ${targetColumns} columns`)
+  console.log(`[SERVER] Original cells:`, cells)
 
   // Adjust number of cells to match target
   if (cells.length > targetColumns) {
@@ -151,94 +151,123 @@ function normalizeTableRow(row: string, targetColumns: number): string {
     const extraCells = cells.slice(targetColumns - 1)
     cells = cells.slice(0, targetColumns - 1)
     cells.push(extraCells.join(" | "))
-    console.log(`Merged extra cells into last column`)
+    console.log(`[SERVER] Merged extra cells into last column`)
   } else if (cells.length < targetColumns) {
     // Too few cells - add empty cells
     while (cells.length < targetColumns) {
       cells.push("")
     }
-    console.log(`Added empty cells to reach target`)
+    console.log(`[SERVER] Added empty cells to reach target`)
   }
 
-  console.log(`Final cells:`, cells)
+  console.log(`[SERVER] Final cells:`, cells)
 
   // Reconstruct the row
   const result = "| " + cells.join(" | ") + " |"
-  console.log(`Normalized result: "${result}"`)
+  console.log(`[SERVER] Normalized result: "${result}"`)
   return result
 }
 
 // Helper function to create a separator row
 function createSeparatorRow(columns: number): string {
-  console.log(`Creating separator row for ${columns} columns`)
+  console.log(`[SERVER] Creating separator row for ${columns} columns`)
   const separators = Array(columns).fill("---")
   const result = "| " + separators.join(" | ") + " |"
-  console.log(`Created separator: "${result}"`)
+  console.log(`[SERVER] Created separator: "${result}"`)
+  return result
+}
+
+// Helper function to check if a line is a separator row
+function isSeparatorRow(line: string): boolean {
+  const trimmed = line.trim()
+  const result = /^[\s|:-]+$/.test(trimmed)
+  console.log(`[SERVER] Checking if separator: "${trimmed}" -> ${result}`)
   return result
 }
 
 // Helper function to parse and fix table structure
 function parseAndFixTable(tableText: string): string[] {
-  console.log("=== PARSING TABLE ===")
-  console.log("Raw table text:", tableText)
+  console.log("[SERVER] === PARSING TABLE ===")
+  console.log("[SERVER] Raw table text:", tableText)
 
   const lines = tableText
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && line.includes("|"))
 
-  if (lines.length === 0) return []
+  if (lines.length === 0) {
+    console.log("[SERVER] No table lines found")
+    return []
+  }
 
-  console.log("Table lines found:", lines.length)
-  lines.forEach((line, i) => console.log(`Line ${i + 1}: "${line}"`))
+  console.log(`[SERVER] Table lines found: ${lines.length}`)
+  lines.forEach((line, i) => console.log(`[SERVER] Line ${i + 1}: "${line}"`))
 
   // Find the header row (first non-separator row)
   let headerRow = ""
   let targetColumns = 0
+  let headerIndex = -1
 
-  for (const line of lines) {
-    // Skip separator rows (contain only |, -, :, and spaces)
-    if (!/^[\s|:-]+$/.test(line)) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    console.log(`[SERVER] Examining line ${i + 1} for header: "${line}"`)
+
+    if (!isSeparatorRow(line)) {
       headerRow = line
       targetColumns = countColumns(line)
-      console.log(`Header row found: "${headerRow}"`)
-      console.log(`Target columns: ${targetColumns}`)
+      headerIndex = i
+      console.log(`[SERVER] Header row found at index ${i}: "${headerRow}"`)
+      console.log(`[SERVER] Target columns: ${targetColumns}`)
       break
+    } else {
+      console.log(`[SERVER] Line ${i + 1} is a separator, skipping`)
     }
   }
 
   if (targetColumns === 0) {
-    console.log("No valid header row found")
+    console.log("[SERVER] No valid header row found")
     return []
   }
 
   const fixedRows = []
   let separatorAdded = false
 
-  for (const line of lines) {
+  console.log(`[SERVER] Processing ${lines.length} lines...`)
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    console.log(`[SERVER] Processing line ${i + 1}/${lines.length}: "${line}"`)
+
     // Skip existing separator rows
-    if (/^[\s|:-]+$/.test(line)) {
-      console.log(`Skipping separator row: "${line}"`)
+    if (isSeparatorRow(line)) {
+      console.log(`[SERVER] Skipping separator row at line ${i + 1}: "${line}"`)
       continue
     }
 
     // Normalize the row to have the correct number of columns
+    console.log(`[SERVER] Normalizing data row at line ${i + 1}`)
     const normalizedRow = normalizeTableRow(line, targetColumns)
-    console.log(`Normalized: "${line}" -> "${normalizedRow}"`)
+    console.log(`[SERVER] Normalized: "${line}" -> "${normalizedRow}"`)
     fixedRows.push(normalizedRow)
 
-    // Add separator after the first row (header)
-    if (!separatorAdded) {
+    // Add separator ONLY after the header row (first non-separator row)
+    if (i === headerIndex && !separatorAdded) {
+      console.log(`[SERVER] This is the header row (index ${headerIndex}), adding separator`)
       const separator = createSeparatorRow(targetColumns)
-      console.log(`Adding separator: "${separator}"`)
+      console.log(`[SERVER] Adding separator: "${separator}"`)
       fixedRows.push(separator)
       separatorAdded = true
+      console.log(`[SERVER] Separator added, separatorAdded = ${separatorAdded}`)
+    } else if (i === headerIndex) {
+      console.log(`[SERVER] This is the header row but separator already added`)
+    } else {
+      console.log(`[SERVER] This is a data row (index ${i}), not adding separator`)
     }
   }
 
-  console.log("=== FINAL TABLE ROWS ===")
-  fixedRows.forEach((row, i) => console.log(`Row ${i + 1}: "${row}"`))
-  console.log("=== END TABLE PARSING ===")
+  console.log("[SERVER] === FINAL TABLE ROWS ===")
+  fixedRows.forEach((row, i) => console.log(`[SERVER] Final Row ${i + 1}: "${row}"`))
+  console.log("[SERVER] === END TABLE PARSING ===")
 
   return fixedRows
 }
@@ -273,42 +302,60 @@ function cleanResponseText(text: string): string {
 
 // Helper function to split content into streamable chunks with table awareness
 function createStreamableChunks(text: string): Array<{ type: string; content: string }> {
+  console.log("[SERVER] === CREATING STREAMABLE CHUNKS ===")
   const chunks = []
   const lines = text.split("\n")
   let currentChunk = ""
   let inTable = false
   let tableRows = []
+  let tableCount = 0
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    console.log(`[SERVER] Processing line ${i + 1}: "${line.substring(0, 50)}..."`)
 
     // Detect table start
     if (line.includes("|") && !inTable) {
+      tableCount++
+      console.log(`[SERVER] Table ${tableCount} start detected at line ${i + 1}`)
       // Flush any existing content
       if (currentChunk.trim()) {
+        console.log(`[SERVER] Flushing text chunk before table: "${currentChunk.substring(0, 50)}..."`)
         chunks.push({ type: "text", content: currentChunk.trim() })
         currentChunk = ""
       }
       inTable = true
       tableRows = [line]
+      console.log(`[SERVER] Started collecting table rows for table ${tableCount}`)
     }
     // Continue collecting table rows
     else if (inTable && line.includes("|")) {
       tableRows.push(line)
+      console.log(`[SERVER] Added row to table ${tableCount}: "${line.substring(0, 50)}..."`)
     }
     // Detect table end
     else if (inTable && !line.includes("|")) {
+      console.log(`[SERVER] Table ${tableCount} end detected at line ${i + 1}`)
+      console.log(`[SERVER] Processing table ${tableCount} with ${tableRows.length} rows`)
+
       // Process the complete table
       const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
-      for (const row of fixedTableRows) {
+      console.log(`[SERVER] Table ${tableCount} processed into ${fixedTableRows.length} fixed rows`)
+
+      for (let j = 0; j < fixedTableRows.length; j++) {
+        const row = fixedTableRows[j]
+        console.log(`[SERVER] Adding table-row chunk ${j + 1}/${fixedTableRows.length} from table ${tableCount}`)
         chunks.push({ type: "table-row", content: row })
       }
+
       inTable = false
       tableRows = []
+      console.log(`[SERVER] Finished processing table ${tableCount}`)
 
       // Start new text chunk
       if (line.trim()) {
         currentChunk = line
+        console.log(`[SERVER] Started new text chunk after table: "${line.substring(0, 50)}..."`)
       }
     }
     // Regular text line
@@ -319,7 +366,11 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
 
   // Handle any remaining table
   if (inTable && tableRows.length > 0) {
+    tableCount++
+    console.log(`[SERVER] Processing final table ${tableCount} with ${tableRows.length} rows`)
     const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
+    console.log(`[SERVER] Final table processed into ${fixedTableRows.length} fixed rows`)
+
     for (const row of fixedTableRows) {
       chunks.push({ type: "table-row", content: row })
     }
@@ -327,9 +378,11 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
 
   // Handle any remaining text
   if (currentChunk.trim()) {
+    console.log(`[SERVER] Adding final text chunk: "${currentChunk.substring(0, 50)}..."`)
     chunks.push({ type: "text", content: currentChunk.trim() })
   }
 
+  console.log(`[SERVER] === CHUNKS CREATED: ${chunks.length} total ===`)
   return chunks
 }
 

@@ -466,7 +466,7 @@ export async function POST(req: Request) {
             })}\n\n`
 
             console.log(
-              `Sending ${chunk.type} chunk ${chunkIndex + 1}/${streamChunks.length}: "${chunk.content.substring(0, 50)}..."`,
+              `Sending ${chunk.type} chunk ${chunkIndex + 1}/${streamChunks.length}: "${chunk.content.substring(0, 300)}..."`,
             )
             controller.enqueue(encoder.encode(sseChunk))
 

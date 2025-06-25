@@ -109,36 +109,66 @@ function containsTable(text: string): boolean {
   return tablePattern.test(text)
 }
 
-// Helper function to fix a single table row
-function fixTableRow(row: string): string {
+// Helper function to count columns in a table row
+function countColumns(row: string): number {
+  if (!row.includes("|")) return 0
+  // Count the number of | characters and add 1, but subtract 2 if row starts and ends with |
+  const pipes = (row.match(/\|/g) || []).length
+  const startsWithPipe = row.trim().startsWith("|")
+  const endsWithPipe = row.trim().endsWith("|")
+
+  if (startsWithPipe && endsWithPipe) {
+    return pipes - 1
+  } else if (startsWithPipe || endsWithPipe) {
+    return pipes
+  } else {
+    return pipes + 1
+  }
+}
+
+// Helper function to normalize a table row to have the specified number of columns
+function normalizeTableRow(row: string, targetColumns: number): string {
   if (!row.includes("|")) return row
 
-  let fixed = row.trim()
+  let cleaned = row.trim()
 
-  // Don't process separator rows here - let parseAndFixTable handle them
-  if (/^[\s|:-]+$/.test(fixed)) {
-    return fixed
+  // Remove leading/trailing pipes temporarily to work with cell content
+  const startsWithPipe = cleaned.startsWith("|")
+  const endsWithPipe = cleaned.endsWith("|")
+
+  if (startsWithPipe) cleaned = cleaned.substring(1)
+  if (endsWithPipe) cleaned = cleaned.substring(0, cleaned.length - 1)
+
+  // Split by | and clean up each cell
+  let cells = cleaned.split("|").map((cell) => cell.trim())
+
+  // Adjust number of cells to match target
+  if (cells.length > targetColumns) {
+    // Too many cells - merge the extra ones into the last cell
+    const extraCells = cells.slice(targetColumns - 1)
+    cells = cells.slice(0, targetColumns - 1)
+    cells.push(extraCells.join(" | "))
+  } else if (cells.length < targetColumns) {
+    // Too few cells - add empty cells
+    while (cells.length < targetColumns) {
+      cells.push("")
+    }
   }
 
-  // Ensure row starts and ends with |
-  if (!fixed.startsWith("|")) {
-    fixed = "| " + fixed
-  }
-  if (!fixed.endsWith("|")) {
-    fixed = fixed + " |"
-  }
+  // Reconstruct the row
+  return "| " + cells.join(" | ") + " |"
+}
 
-  // Clean up spacing around pipes
-  fixed = fixed.replace(/\s*\|\s*/g, " | ")
-
-  // Fix double pipes and empty cells
-  fixed = fixed.replace(/\|\s*\|\s*/g, " |  | ")
-
-  return fixed
+// Helper function to create a separator row
+function createSeparatorRow(columns: number): string {
+  return "| " + "--- | ".repeat(columns - 1) + "--- |"
 }
 
 // Helper function to parse and fix table structure
 function parseAndFixTable(tableText: string): string[] {
+  console.log("=== PARSING TABLE ===")
+  console.log("Raw table text:", tableText)
+
   const lines = tableText
     .split("\n")
     .map((line) => line.trim())
@@ -146,39 +176,56 @@ function parseAndFixTable(tableText: string): string[] {
 
   if (lines.length === 0) return []
 
+  console.log("Table lines found:", lines.length)
+  lines.forEach((line, i) => console.log(`Line ${i + 1}: "${line}"`))
+
+  // Find the header row (first non-separator row)
+  let headerRow = ""
+  let targetColumns = 0
+
+  for (const line of lines) {
+    // Skip separator rows (contain only |, -, :, and spaces)
+    if (!/^[\s|:-]+$/.test(line)) {
+      headerRow = line
+      targetColumns = countColumns(line)
+      console.log(`Header row found: "${headerRow}"`)
+      console.log(`Target columns: ${targetColumns}`)
+      break
+    }
+  }
+
+  if (targetColumns === 0) {
+    console.log("No valid header row found")
+    return []
+  }
+
   const fixedRows = []
-  let headerProcessed = false
   let separatorAdded = false
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    // Skip if this is already a separator row (contains only |, -, :, and spaces)
+  for (const line of lines) {
+    // Skip existing separator rows
     if (/^[\s|:-]+$/.test(line)) {
-      // Only add one separator row after header
-      if (!separatorAdded && headerProcessed) {
-        const colCount = (fixedRows[0].match(/\|/g) || []).length - 1
-        const separator = "|" + " --- |".repeat(colCount) + " --- |"
-        fixedRows.push(separator)
-        separatorAdded = true
-      }
+      console.log(`Skipping separator row: "${line}"`)
       continue
     }
 
-    const fixedRow = fixTableRow(line)
-    fixedRows.push(fixedRow)
+    // Normalize the row to have the correct number of columns
+    const normalizedRow = normalizeTableRow(line, targetColumns)
+    console.log(`Normalized: "${line}" -> "${normalizedRow}"`)
+    fixedRows.push(normalizedRow)
 
-    // After processing the first row (header), add separator if not already added
-    if (!headerProcessed) {
-      headerProcessed = true
-      if (!separatorAdded) {
-        const colCount = (fixedRow.match(/\|/g) || []).length - 1
-        const separator = "|" + " --- |".repeat(colCount) + " --- |"
-        fixedRows.push(separator)
-        separatorAdded = true
-      }
+    // Add separator after the first row (header)
+    if (!separatorAdded) {
+      const separator = createSeparatorRow(targetColumns)
+      console.log(`Adding separator: "${separator}"`)
+      fixedRows.push(separator)
+      separatorAdded = true
     }
   }
+
+  console.log("=== FINAL TABLE ROWS ===")
+  fixedRows.forEach((row, i) => console.log(`Row ${i + 1}: "${row}"`))
+  console.log("=== END TABLE PARSING ===")
 
   return fixedRows
 }

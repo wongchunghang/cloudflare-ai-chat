@@ -425,12 +425,26 @@ export async function POST(req: Request) {
           if (chunkIndex < streamChunks.length) {
             const chunk = streamChunks[chunkIndex]
             const isLastChunk = chunkIndex === streamChunks.length - 1
+            const nextChunk = chunkIndex < streamChunks.length - 1 ? streamChunks[chunkIndex + 1] : null
 
             let textToSend = chunk.content
-            if (!isLastChunk && chunk.type === "text") {
-              textToSend += "\n\n"
-            } else if (!isLastChunk && chunk.type === "table-row") {
-              textToSend += "\n"
+
+            if (!isLastChunk) {
+              if (chunk.type === "text") {
+                textToSend += "\n\n"
+              } else if (chunk.type === "table-row") {
+                // Check if next chunk is also a table row
+                if (nextChunk && nextChunk.type === "table-row") {
+                  textToSend += "\n" // Single newline between table rows
+                } else {
+                  textToSend += "\n\n" // Double newline after table ends
+                }
+              }
+            } else {
+              // Last chunk - ensure proper ending
+              if (chunk.type === "table-row") {
+                textToSend += "\n\n"
+              }
             }
 
             const sseChunk = `data: ${JSON.stringify({

@@ -105,8 +105,73 @@ function findStringValues(obj: any, maxDepth = 3, currentDepth = 0): string[] {
 // Helper function to detect if content contains tables
 function containsTable(text: string): boolean {
   // Look for table patterns
-  const tablePattern = /\|.*\|.*\n\s*\|[-\s|:]+\|/
+  const tablePattern = /\|.*\|/
   return tablePattern.test(text)
+}
+
+// Helper function to fix a single table row
+function fixTableRow(row: string): string {
+  if (!row.includes("|")) return row
+
+  let fixed = row.trim()
+
+  // Handle separator rows
+  if (fixed.includes("--") || fixed.includes("-")) {
+    // Count expected columns from the row structure
+    const pipes = (fixed.match(/\|/g) || []).length
+    const expectedCols = pipes > 0 ? pipes + 1 : 3 // Default to 3 columns if unclear
+
+    // Create proper separator row
+    fixed = "|" + " --- |".repeat(expectedCols - 1) + " --- |"
+    return fixed
+  }
+
+  // Ensure row starts and ends with |
+  if (!fixed.startsWith("|")) {
+    fixed = "| " + fixed
+  }
+  if (!fixed.endsWith("|")) {
+    fixed = fixed + " |"
+  }
+
+  // Clean up spacing around pipes
+  fixed = fixed.replace(/\s*\|\s*/g, " | ")
+
+  // Fix double pipes
+  fixed = fixed.replace(/\|\s*\|\s*/g, " | ")
+
+  return fixed
+}
+
+// Helper function to parse and fix table structure
+function parseAndFixTable(tableText: string): string[] {
+  const lines = tableText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const fixedRows = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    if (line.includes("|")) {
+      const fixedRow = fixTableRow(line)
+      fixedRows.push(fixedRow)
+
+      // If this is the first data row (header), add separator if missing
+      if (i === 0 && lines.length > 1) {
+        const nextLine = lines[i + 1]
+        if (!nextLine.includes("--") && !nextLine.includes("-")) {
+          // Count columns in header to create proper separator
+          const colCount = (fixedRow.match(/\|/g) || []).length - 1
+          const separator = "|" + " --- |".repeat(colCount) + " --- |"
+          fixedRows.push(separator)
+        }
+      }
+    }
+  }
+
+  return fixedRows
 }
 
 // Helper function to clean and normalize response text
@@ -120,66 +185,6 @@ function cleanResponseText(text: string): string {
     .replace(/\\"/g, '"') // Convert escaped quotes
     .replace(/^\s*["']|["']\s*$/g, "") // Remove surrounding quotes
     .trim()
-
-  // Fix table formatting issues
-  if (containsTable(cleaned)) {
-    console.log("Table detected, applying table-specific fixes...")
-
-    // Fix broken table separators
-    cleaned = cleaned.replace(/\|\s*--\s*\|/g, "|---|")
-    cleaned = cleaned.replace(/\|\s*--\s*$/gm, "|---|")
-    cleaned = cleaned.replace(/^\s*--\s*\|/gm, "|---|")
-
-    // Fix incomplete table headers
-    cleaned = cleaned.replace(/\|\s*\|\s*--/g, "|\n|---|")
-
-    // Ensure table rows have proper structure
-    const lines = cleaned.split("\n")
-    const fixedLines = []
-    let inTable = false
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-
-      // Detect table start
-      if (line.includes("|") && !inTable) {
-        inTable = true
-      }
-
-      // Detect table end
-      if (inTable && line && !line.includes("|")) {
-        inTable = false
-      }
-
-      if (inTable && line.includes("|")) {
-        // Fix table row formatting
-        let fixedLine = line
-
-        // Ensure proper spacing around pipes
-        fixedLine = fixedLine.replace(/\s*\|\s*/g, " | ")
-
-        // Fix separator rows
-        if (fixedLine.includes("--")) {
-          const cellCount = (fixedLine.match(/\|/g) || []).length + 1
-          fixedLine = "|" + " --- |".repeat(cellCount - 1) + " --- |"
-        }
-
-        // Ensure line starts and ends with |
-        if (!fixedLine.startsWith("|")) {
-          fixedLine = "| " + fixedLine
-        }
-        if (!fixedLine.endsWith("|")) {
-          fixedLine = fixedLine + " |"
-        }
-
-        fixedLines.push(fixedLine)
-      } else {
-        fixedLines.push(line)
-      }
-    }
-
-    cleaned = fixedLines.join("\n")
-  }
 
   // Fix hyphen-style bullet points (common in Llama 3.1 70B)
   // Look for lines starting with "- " and ensure they have proper line breaks
@@ -195,6 +200,68 @@ function cleanResponseText(text: string): string {
   cleaned = cleaned.replace(/(\*\*[^*]+\*\*)(\*\*)/g, "$1\n\n$2")
 
   return cleaned
+}
+
+// Helper function to split content into streamable chunks with table awareness
+function createStreamableChunks(text: string): Array<{ type: string; content: string }> {
+  const chunks = []
+  const lines = text.split("\n")
+  let currentChunk = ""
+  let inTable = false
+  let tableRows = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Detect table start
+    if (line.includes("|") && !inTable) {
+      // Flush any existing content
+      if (currentChunk.trim()) {
+        chunks.push({ type: "text", content: currentChunk.trim() })
+        currentChunk = ""
+      }
+      inTable = true
+      tableRows = [line]
+    }
+    // Continue collecting table rows
+    else if (inTable && line.includes("|")) {
+      tableRows.push(line)
+    }
+    // Detect table end
+    else if (inTable && !line.includes("|")) {
+      // Process the complete table
+      const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
+      for (const row of fixedTableRows) {
+        chunks.push({ type: "table-row", content: row })
+      }
+      inTable = false
+      tableRows = []
+
+      // Start new text chunk
+      if (line.trim()) {
+        currentChunk = line
+      }
+    }
+    // Regular text line
+    else if (!inTable) {
+      currentChunk += (currentChunk ? "\n" : "") + line
+    }
+  }
+
+  // Handle any remaining table
+  if (inTable && tableRows.length > 0) {
+    const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
+    for (const row of fixedTableRows) {
+      chunks.push({ type: "table-row", content: row })
+    }
+  }
+
+  // Handle any remaining text
+  if (currentChunk.trim()) {
+    chunks.push({ type: "text", content: currentChunk.trim() })
+  }
+
+  return chunks
 }
 
 export async function POST(req: Request) {
@@ -280,128 +347,59 @@ export async function POST(req: Request) {
     console.log("First 300 chars:", cleanedResponse.substring(0, 300))
     console.log("=== END CLEANED RESPONSE ===")
 
+    // Create streamable chunks
+    const streamChunks = createStreamableChunks(cleanedResponse)
+    console.log("=== STREAM CHUNKS ===")
+    console.log("Total chunks:", streamChunks.length)
+    streamChunks.forEach((chunk, i) => {
+      console.log(`Chunk ${i + 1}: ${chunk.type} - "${chunk.content.substring(0, 50)}..."`)
+    })
+    console.log("=== END STREAM CHUNKS ===")
+
     // Create a streaming response that sends chunks of the AI response
     const encoder = new TextEncoder()
 
     const stream = new ReadableStream({
       start(controller) {
-        console.log("Starting stream...")
+        console.log("Starting intelligent stream...")
 
-        // Check if the response contains tables
-        const hasTable = containsTable(cleanedResponse)
+        let chunkIndex = 0
 
-        if (hasTable) {
-          console.log("Response contains tables, using table-aware streaming...")
+        const sendNextChunk = () => {
+          if (chunkIndex < streamChunks.length) {
+            const chunk = streamChunks[chunkIndex]
+            const isLastChunk = chunkIndex === streamChunks.length - 1
 
-          // For responses with tables, send larger chunks to preserve table structure
-          const chunks = cleanedResponse.split(/\n\s*\n/).filter((chunk) => chunk.trim().length > 0)
-          let chunkIndex = 0
-
-          const sendTableChunk = () => {
-            if (chunkIndex < chunks.length) {
-              const chunk = chunks[chunkIndex]
-              const isLastChunk = chunkIndex === chunks.length - 1
-
-              let textToSend = chunk
-              if (!isLastChunk) {
-                textToSend += "\n\n"
-              }
-
-              const sseChunk = `data: ${JSON.stringify({
-                type: "text-delta",
-                textDelta: textToSend,
-              })}\n\n`
-
-              console.log(`Sending table chunk ${chunkIndex + 1}/${chunks.length}`)
-              controller.enqueue(encoder.encode(sseChunk))
-
-              chunkIndex++
-              // Slower streaming for tables to ensure proper rendering
-              setTimeout(sendTableChunk, 800)
-            } else {
-              console.log("Table stream complete, closing...")
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
-              controller.close()
+            let textToSend = chunk.content
+            if (!isLastChunk && chunk.type === "text") {
+              textToSend += "\n\n"
+            } else if (!isLastChunk && chunk.type === "table-row") {
+              textToSend += "\n"
             }
+
+            const sseChunk = `data: ${JSON.stringify({
+              type: "text-delta",
+              textDelta: textToSend,
+            })}\n\n`
+
+            console.log(
+              `Sending ${chunk.type} chunk ${chunkIndex + 1}/${streamChunks.length}: "${chunk.content.substring(0, 50)}..."`,
+            )
+            controller.enqueue(encoder.encode(sseChunk))
+
+            chunkIndex++
+
+            // Adjust timing based on content type
+            const delay = chunk.type === "table-row" ? 300 : chunk.type === "text" ? 500 : 200
+            setTimeout(sendNextChunk, delay)
+          } else {
+            console.log("Intelligent stream complete, closing...")
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
+            controller.close()
           }
-
-          sendTableChunk()
-        } else {
-          // Original streaming logic for non-table content
-          const paragraphs = cleanedResponse.split(/\n\s*\n/).filter((p) => p.trim().length > 0)
-          let paragraphIndex = 0
-
-          const sendParagraph = () => {
-            if (paragraphIndex < paragraphs.length) {
-              const paragraph = paragraphs[paragraphIndex].trim()
-
-              let chunks = []
-
-              if (
-                paragraph.startsWith("#") ||
-                paragraph.match(/^\d+\.\s/) ||
-                paragraph.match(/^\*\s/) ||
-                paragraph.match(/^-\s/)
-              ) {
-                chunks = [paragraph]
-              } else {
-                chunks = paragraph
-                  .split(/([.!?]+\s+)/)
-                  .reduce((acc, part, index, array) => {
-                    if (index % 2 === 0) {
-                      const punctuation = array[index + 1] || ""
-                      acc.push((part + punctuation).trim())
-                    }
-                    return acc
-                  }, [])
-                  .filter((chunk) => chunk.length > 0)
-              }
-
-              let chunkIndex = 0
-
-              const sendChunk = () => {
-                if (chunkIndex < chunks.length) {
-                  const chunk = chunks[chunkIndex]
-                  const isLastChunk = chunkIndex === chunks.length - 1
-                  const isLastParagraph = paragraphIndex === paragraphs.length - 1
-
-                  let textToSend = chunk
-                  if (!isLastChunk) {
-                    textToSend += " "
-                  } else if (!isLastParagraph) {
-                    textToSend += "\n\n"
-                  }
-
-                  const sseChunk = `data: ${JSON.stringify({
-                    type: "text-delta",
-                    textDelta: textToSend,
-                  })}\n\n`
-
-                  console.log(
-                    `Sending chunk ${chunkIndex + 1}/${chunks.length} from paragraph ${paragraphIndex + 1}/${paragraphs.length}`,
-                  )
-
-                  controller.enqueue(encoder.encode(sseChunk))
-
-                  chunkIndex++
-                  const delay = chunk.startsWith("#") ? 200 : Math.min(400, Math.max(100, chunk.length * 8))
-                  setTimeout(sendChunk, delay)
-                } else {
-                  paragraphIndex++
-                  setTimeout(sendParagraph, 300)
-                }
-              }
-
-              sendChunk()
-            } else {
-              console.log("Stream complete, closing...")
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
-              controller.close()
-            }
-          }
-
-          sendParagraph()
         }
+
+        sendNextChunk()
       },
     })
 

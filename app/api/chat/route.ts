@@ -421,7 +421,7 @@ export async function POST(req: Request) {
     console.log("=== STREAM CHUNKS ===")
     console.log("Total chunks:", streamChunks.length)
     streamChunks.forEach((chunk, i) => {
-      console.log(`Chunk ${i + 1}: ${chunk.type} - "${chunk.content.substring(0, 50)}..."`)
+      console.log(`Chunk ${i + 1}: ${chunk.type} - "${chunk.content.substring(0, 200)}..."`)
     })
     console.log("=== END STREAM CHUNKS ===")
 

@@ -7,15 +7,21 @@ interface MarkdownMessageProps {
 }
 
 export function MarkdownMessage({ content, className = "" }: MarkdownMessageProps) {
-  // Pre-process content to convert hyphen lists to asterisk lists for better Markdown compatibility
+  // Pre-process content to handle tables and lists better
   const processedContent = content
     // Convert hyphen bullet points to asterisk bullet points for better Markdown compatibility
     .replace(/^- /gm, "* ")
     .replace(/\n- /g, "\n* ")
-    // Ensure proper spacing for lists
-    .replace(/\n\*\s/g, "\n\n* ")
+    // Ensure proper spacing for lists (but not for tables)
+    .replace(/\n\*\s(?!\|)/g, "\n\n* ")
     // Ensure proper spacing for numbered lists
     .replace(/\n(\d+\.\s)/g, "\n\n$1")
+    // Fix table formatting - ensure proper spacing around table separators
+    .replace(/\|\s*-+\s*\|/g, (match) => {
+      // Count the number of cells and create proper separator
+      const cellCount = (match.match(/\|/g) || []).length - 1
+      return "|" + " --- |".repeat(cellCount) + " --- |"
+    })
 
   return (
     <div className={`prose prose-sm max-w-none ${className}`}>
@@ -69,14 +75,21 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
             </a>
           ),
           table: ({ children }) => (
-            <div className="overflow-x-auto my-3">
-              <table className="min-w-full border-collapse border border-gray-300">{children}</table>
+            <div className="overflow-x-auto my-4">
+              <table className="min-w-full border-collapse border border-gray-300 bg-white rounded-lg shadow-sm">
+                {children}
+              </table>
             </div>
           ),
+          thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
+          tbody: ({ children }) => <tbody className="divide-y divide-gray-200">{children}</tbody>,
+          tr: ({ children }) => <tr className="hover:bg-gray-50">{children}</tr>,
           th: ({ children }) => (
-            <th className="border border-gray-300 px-3 py-2 bg-gray-100 font-semibold text-left">{children}</th>
+            <th className="border border-gray-300 px-4 py-3 bg-gray-100 font-semibold text-left text-gray-900">
+              {children}
+            </th>
           ),
-          td: ({ children }) => <td className="border border-gray-300 px-3 py-2">{children}</td>,
+          td: ({ children }) => <td className="border border-gray-300 px-4 py-3 text-gray-700">{children}</td>,
           hr: () => <hr className="my-4 border-gray-300" />,
           // Custom handling for better spacing
           div: ({ children }) => <div className="mb-2">{children}</div>,

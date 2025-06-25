@@ -102,6 +102,13 @@ function findStringValues(obj: any, maxDepth = 3, currentDepth = 0): string[] {
   return strings
 }
 
+// Helper function to detect if content contains tables
+function containsTable(text: string): boolean {
+  // Look for table patterns
+  const tablePattern = /\|.*\|.*\n\s*\|[-\s|:]+\|/
+  return tablePattern.test(text)
+}
+
 // Helper function to clean and normalize response text
 function cleanResponseText(text: string): string {
   // First, handle literal escape sequences
@@ -113,6 +120,66 @@ function cleanResponseText(text: string): string {
     .replace(/\\"/g, '"') // Convert escaped quotes
     .replace(/^\s*["']|["']\s*$/g, "") // Remove surrounding quotes
     .trim()
+
+  // Fix table formatting issues
+  if (containsTable(cleaned)) {
+    console.log("Table detected, applying table-specific fixes...")
+
+    // Fix broken table separators
+    cleaned = cleaned.replace(/\|\s*--\s*\|/g, "|---|")
+    cleaned = cleaned.replace(/\|\s*--\s*$/gm, "|---|")
+    cleaned = cleaned.replace(/^\s*--\s*\|/gm, "|---|")
+
+    // Fix incomplete table headers
+    cleaned = cleaned.replace(/\|\s*\|\s*--/g, "|\n|---|")
+
+    // Ensure table rows have proper structure
+    const lines = cleaned.split("\n")
+    const fixedLines = []
+    let inTable = false
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Detect table start
+      if (line.includes("|") && !inTable) {
+        inTable = true
+      }
+
+      // Detect table end
+      if (inTable && line && !line.includes("|")) {
+        inTable = false
+      }
+
+      if (inTable && line.includes("|")) {
+        // Fix table row formatting
+        let fixedLine = line
+
+        // Ensure proper spacing around pipes
+        fixedLine = fixedLine.replace(/\s*\|\s*/g, " | ")
+
+        // Fix separator rows
+        if (fixedLine.includes("--")) {
+          const cellCount = (fixedLine.match(/\|/g) || []).length + 1
+          fixedLine = "|" + " --- |".repeat(cellCount - 1) + " --- |"
+        }
+
+        // Ensure line starts and ends with |
+        if (!fixedLine.startsWith("|")) {
+          fixedLine = "| " + fixedLine
+        }
+        if (!fixedLine.endsWith("|")) {
+          fixedLine = fixedLine + " |"
+        }
+
+        fixedLines.push(fixedLine)
+      } else {
+        fixedLines.push(line)
+      }
+    }
+
+    cleaned = fixedLines.join("\n")
+  }
 
   // Fix hyphen-style bullet points (common in Llama 3.1 70B)
   // Look for lines starting with "- " and ensure they have proper line breaks
@@ -220,90 +287,121 @@ export async function POST(req: Request) {
       start(controller) {
         console.log("Starting stream...")
 
-        // Split the response into paragraphs (double newlines)
-        const paragraphs = cleanedResponse.split(/\n\s*\n/).filter((p) => p.trim().length > 0)
-        let paragraphIndex = 0
+        // Check if the response contains tables
+        const hasTable = containsTable(cleanedResponse)
 
-        const sendParagraph = () => {
-          if (paragraphIndex < paragraphs.length) {
-            const paragraph = paragraphs[paragraphIndex].trim()
+        if (hasTable) {
+          console.log("Response contains tables, using table-aware streaming...")
 
-            // For better streaming, split long paragraphs into sentences
-            // But preserve list items and headers as complete units
-            let chunks = []
+          // For responses with tables, send larger chunks to preserve table structure
+          const chunks = cleanedResponse.split(/\n\s*\n/).filter((chunk) => chunk.trim().length > 0)
+          let chunkIndex = 0
 
-            // Special handling for different content types
-            if (
-              paragraph.startsWith("#") ||
-              paragraph.match(/^\d+\.\s/) ||
-              paragraph.match(/^\*\s/) ||
-              paragraph.match(/^-\s/)
-            ) {
-              // Headers and list items should be sent as complete units
-              chunks = [paragraph]
-            } else {
-              // Split regular paragraphs into sentences
-              chunks = paragraph
-                .split(/([.!?]+\s+)/)
-                .reduce((acc, part, index, array) => {
-                  if (index % 2 === 0) {
-                    // This is a sentence part
-                    const punctuation = array[index + 1] || ""
-                    acc.push((part + punctuation).trim())
-                  }
-                  return acc
-                }, [])
-                .filter((chunk) => chunk.length > 0)
-            }
+          const sendTableChunk = () => {
+            if (chunkIndex < chunks.length) {
+              const chunk = chunks[chunkIndex]
+              const isLastChunk = chunkIndex === chunks.length - 1
 
-            let chunkIndex = 0
-
-            const sendChunk = () => {
-              if (chunkIndex < chunks.length) {
-                const chunk = chunks[chunkIndex]
-                const isLastChunk = chunkIndex === chunks.length - 1
-                const isLastParagraph = paragraphIndex === paragraphs.length - 1
-
-                // Add appropriate spacing
-                let textToSend = chunk
-                if (!isLastChunk) {
-                  textToSend += " "
-                } else if (!isLastParagraph) {
-                  textToSend += "\n\n"
-                }
-
-                // Create a proper Server-Sent Events format
-                const sseChunk = `data: ${JSON.stringify({
-                  type: "text-delta",
-                  textDelta: textToSend,
-                })}\n\n`
-
-                console.log(
-                  `Sending chunk ${chunkIndex + 1}/${chunks.length} from paragraph ${paragraphIndex + 1}/${paragraphs.length}`,
-                )
-
-                controller.enqueue(encoder.encode(sseChunk))
-
-                chunkIndex++
-                // Adjust timing based on content type and length
-                const delay = chunk.startsWith("#") ? 200 : Math.min(400, Math.max(100, chunk.length * 8))
-                setTimeout(sendChunk, delay)
-              } else {
-                paragraphIndex++
-                setTimeout(sendParagraph, 300)
+              let textToSend = chunk
+              if (!isLastChunk) {
+                textToSend += "\n\n"
               }
+
+              const sseChunk = `data: ${JSON.stringify({
+                type: "text-delta",
+                textDelta: textToSend,
+              })}\n\n`
+
+              console.log(`Sending table chunk ${chunkIndex + 1}/${chunks.length}`)
+              controller.enqueue(encoder.encode(sseChunk))
+
+              chunkIndex++
+              // Slower streaming for tables to ensure proper rendering
+              setTimeout(sendTableChunk, 800)
+            } else {
+              console.log("Table stream complete, closing...")
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
+              controller.close()
             }
-
-            sendChunk()
-          } else {
-            console.log("Stream complete, closing...")
-            // Send completion signal
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
-            controller.close()
           }
-        }
 
-        sendParagraph()
+          sendTableChunk()
+        } else {
+          // Original streaming logic for non-table content
+          const paragraphs = cleanedResponse.split(/\n\s*\n/).filter((p) => p.trim().length > 0)
+          let paragraphIndex = 0
+
+          const sendParagraph = () => {
+            if (paragraphIndex < paragraphs.length) {
+              const paragraph = paragraphs[paragraphIndex].trim()
+
+              let chunks = []
+
+              if (
+                paragraph.startsWith("#") ||
+                paragraph.match(/^\d+\.\s/) ||
+                paragraph.match(/^\*\s/) ||
+                paragraph.match(/^-\s/)
+              ) {
+                chunks = [paragraph]
+              } else {
+                chunks = paragraph
+                  .split(/([.!?]+\s+)/)
+                  .reduce((acc, part, index, array) => {
+                    if (index % 2 === 0) {
+                      const punctuation = array[index + 1] || ""
+                      acc.push((part + punctuation).trim())
+                    }
+                    return acc
+                  }, [])
+                  .filter((chunk) => chunk.length > 0)
+              }
+
+              let chunkIndex = 0
+
+              const sendChunk = () => {
+                if (chunkIndex < chunks.length) {
+                  const chunk = chunks[chunkIndex]
+                  const isLastChunk = chunkIndex === chunks.length - 1
+                  const isLastParagraph = paragraphIndex === paragraphs.length - 1
+
+                  let textToSend = chunk
+                  if (!isLastChunk) {
+                    textToSend += " "
+                  } else if (!isLastParagraph) {
+                    textToSend += "\n\n"
+                  }
+
+                  const sseChunk = `data: ${JSON.stringify({
+                    type: "text-delta",
+                    textDelta: textToSend,
+                  })}\n\n`
+
+                  console.log(
+                    `Sending chunk ${chunkIndex + 1}/${chunks.length} from paragraph ${paragraphIndex + 1}/${paragraphs.length}`,
+                  )
+
+                  controller.enqueue(encoder.encode(sseChunk))
+
+                  chunkIndex++
+                  const delay = chunk.startsWith("#") ? 200 : Math.min(400, Math.max(100, chunk.length * 8))
+                  setTimeout(sendChunk, delay)
+                } else {
+                  paragraphIndex++
+                  setTimeout(sendParagraph, 300)
+                }
+              }
+
+              sendChunk()
+            } else {
+              console.log("Stream complete, closing...")
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
+              controller.close()
+            }
+          }
+
+          sendParagraph()
+        }
       },
     })
 

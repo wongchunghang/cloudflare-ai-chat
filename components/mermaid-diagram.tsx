@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Copy, Check, Eye, Code } from "lucide-react"
+import { Copy, Check, Eye, Code, Table } from "lucide-react"
 
 interface MermaidDiagramProps {
   code: string
@@ -10,11 +10,69 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
-  const [viewMode, setViewMode] = useState<"visual" | "code">("visual")
+  const [viewMode, setViewMode] = useState<"visual" | "code" | "table">("visual")
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [diagramSvg, setDiagramSvg] = useState<string>("")
+  const [hasTableSyntax, setHasTableSyntax] = useState(false)
+  const [extractedTables, setExtractedTables] = useState<Array<{ rows: string[][]; headers: string[] }>>([])
+
+  /* ------------------------------------------------------------------ */
+  /*  TABLE DETECTION AND EXTRACTION                                   */
+  /* ------------------------------------------------------------------ */
+
+  function detectAndExtractTables(src: string) {
+    const lines = src.split("\n")
+    const tables = []
+    let currentTable = null
+    let inTable = false
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Detect table separator lines like "| --- | --- | --- |"
+      if (/^\|\s*---+\s*(\|\s*---+\s*)*\|?\s*$/.test(line)) {
+        if (currentTable && currentTable.rows.length > 0) {
+          // The previous row becomes the header
+          currentTable.headers = currentTable.rows[currentTable.rows.length - 1]
+          currentTable.rows.pop() // Remove header from rows
+        }
+        inTable = true
+        continue
+      }
+
+      // Detect table-style lines like "| B --> | Yes | C[...] |"
+      if (/^\|\s*.*\|.*\|.*\|?\s*$/.test(line) && !line.includes("---")) {
+        const cells = line
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter((cell) => cell.length > 0)
+
+        if (cells.length >= 2) {
+          if (!currentTable) {
+            currentTable = { headers: [], rows: [] }
+          }
+          currentTable.rows.push(cells)
+          inTable = true
+        }
+      } else if (inTable && currentTable) {
+        // End of table
+        if (currentTable.rows.length > 0) {
+          tables.push(currentTable)
+        }
+        currentTable = null
+        inTable = false
+      }
+    }
+
+    // Add any remaining table
+    if (currentTable && currentTable.rows.length > 0) {
+      tables.push(currentTable)
+    }
+
+    return tables
+  }
 
   /* ------------------------------------------------------------------ */
   /*  SANITISERS                                                        */
@@ -158,8 +216,17 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  RENDERING                                                          */
+  /*  EFFECTS                                                           */
   /* ------------------------------------------------------------------ */
+
+  // Detect tables on code change
+  useEffect(() => {
+    const tables = detectAndExtractTables(code)
+    setExtractedTables(tables)
+    setHasTableSyntax(tables.length > 0)
+  }, [code])
+
+  // Render diagram
   useEffect(() => {
     if (viewMode !== "visual") {
       setIsLoading(false)
@@ -173,10 +240,6 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       setIsLoading(true)
 
       const prepared = sanitise(code)
-      console.log("=== MERMAID SANITIZATION ===")
-      console.log("Original:", code)
-      console.log("Sanitized:", prepared)
-      console.log("=== END SANITIZATION ===")
 
       try {
         const mermaid = (await import("mermaid")).default
@@ -255,6 +318,17 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
             <Code className="h-3 w-3 mr-1" />
             Code
           </Button>
+          {hasTableSyntax && (
+            <Button
+              variant={viewMode === "table" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className="h-8 px-3 text-xs"
+            >
+              <Table className="h-3 w-3 mr-1" />
+              Table
+            </Button>
+          )}
           {title && <span className="text-sm ml-3 font-medium text-gray-700">{title}</span>}
         </div>
 
@@ -297,6 +371,11 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
                 <Button variant="outline" size="sm" onClick={() => setViewMode("code")} className="text-xs">
                   View Source Code
                 </Button>
+                {hasTableSyntax && (
+                  <Button variant="outline" size="sm" onClick={() => setViewMode("table")} className="text-xs ml-2">
+                    View as Table
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setViewMode("visual")} className="text-xs ml-2">
                   Try Again
                 </Button>
@@ -304,6 +383,61 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
             </div>
           ) : (
             <div className="mermaid-container w-full overflow-auto" dangerouslySetInnerHTML={{ __html: diagramSvg }} />
+          )}
+        </div>
+      ) : viewMode === "table" ? (
+        <div className="p-6">
+          {extractedTables.length > 0 ? (
+            <div className="space-y-6">
+              {extractedTables.map((table, tableIndex) => (
+                <div key={tableIndex} className="overflow-x-auto">
+                  <table className="min-w-full border-collapse bg-white border border-gray-300 rounded-lg shadow-sm">
+                    {table.headers.length > 0 && (
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                        <tr>
+                          {table.headers.map((header, headerIndex) => (
+                            <th
+                              key={headerIndex}
+                              className="border border-gray-300 px-4 py-3 text-left text-sm font-semibold text-gray-900"
+                            >
+                              {header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody className="divide-y divide-gray-200">
+                      {table.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-gray-50 transition-colors duration-150">
+                          {row.map((cell, cellIndex) => (
+                            <td
+                              key={cellIndex}
+                              className="border border-gray-300 px-4 py-3 text-sm text-gray-700 leading-relaxed"
+                            >
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <div className="text-xs text-gray-500 mt-4">
+                <p className="mb-2">
+                  <strong>Note:</strong> This table view shows the Markdown table syntax detected in the Mermaid code.
+                </p>
+                <p>
+                  Switch to <strong>Visual</strong> to see the converted flowchart diagram, or <strong>Code</strong> to
+                  see the raw syntax.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-gray-500">
+              <Table className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">No table syntax detected in this diagram.</p>
+            </div>
           )}
         </div>
       ) : (

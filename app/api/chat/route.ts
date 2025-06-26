@@ -264,7 +264,7 @@ function parseAndFixTable(tableText: string): string[] {
       fixedRows.push(separator)
     }
   }
-  fixedRows.splice(1, 1); // Remove the second row (index 1)
+  //fixedRows.splice(1, 1); // Remove the second row (index 1)
   console.log("[SERVER] === FINAL TABLE ROWS ===")
   fixedRows.forEach((row, i) => console.log(`[SERVER] Final Row ${i + 1}: "${row}"`))
   console.log("[SERVER] === END TABLE PARSING ===")

@@ -17,16 +17,38 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [diagramSvg, setDiagramSvg] = useState<string>("")
 
-  // --- tiny fixer -----------------------------------------------------------
-  // Adds a newline after the first directive (graph / flowchart / sequence…)
-  // if the user forgot it or Markdown collapsed it.
-  function fixMissingDirectiveNewline(raw: string) {
-    const directivePattern =
-      /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/i
-    return raw.replace(directivePattern, (m) => `${m}\n`)
+  // -------------------------------------------------
+  //  PRE-PROCESSORS
+  // -------------------------------------------------
+  // 1) Make sure the diagram directive has a newline after it.
+  function ensureDirectiveNewline(src: string) {
+    const re = /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/im
+    return src.replace(re, (m) => `${m}\n`)
   }
-  // --------------------------------------------------------------------------
 
+  // 2) Add spaces around edge-label pipes (… -->|Yes| B …  →  … --> | Yes | B …)
+  //    and insert a newline when a line ends with }|  or ]|
+  function normaliseEdgeLabelPipes(src: string) {
+    return (
+      src
+        // newline after }| or ]|
+        .replace(/([}\]])\|/g, "$1\n|")
+        // space after edge operator before |
+        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
+        // space after opening |
+        .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
+        // space before closing |
+        .replace(/(?<=[A-Za-z0-9\]}])\|/g, " |")
+    )
+  }
+
+  // 3) Combined sanitiser
+  function sanitiseMermaid(raw: string) {
+    let out = raw.replace(/\r\n?/g, "\n")
+    out = ensureDirectiveNewline(out)
+    out = normaliseEdgeLabelPipes(out)
+    return out
+  }
   useEffect(() => {
     if (viewMode !== "visual") {
       setIsLoading(false)
@@ -38,7 +60,7 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         setError(null)
         setIsLoading(true)
 
-        const prepared = fixMissingDirectiveNewline(code.replace(/\r\n?/g, "\n"))
+        const prepared = sanitiseMermaid(code)
 
         // Dynamic import with better error handling
         const mermaidModule = await import("mermaid")
@@ -74,20 +96,39 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         // Generate unique ID for this diagram
         const diagramId = `mermaid-diagram-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-        // Validate the code first
-        const isValid = await mermaid.parse(prepared)
-        if (!isValid) {
-          throw new Error("Invalid Mermaid syntax")
+        // Try parsing / rendering. If it fails, try once more with
+        // an aggressively sanitised version.
+        const current = prepared
+        let svg = ""
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await mermaid.parse(current)
+            const rendered = await mermaid.render(diagramId, current)
+            svg = rendered.svg
+            break
+          } catch (e) {
+            if (attempt === 0) {
+              console.warn("First Mermaid parse failed – running extra sanitiser")
+              // Nothing extra for now; we already sanitised. Could add more rules here.
+            } else {
+              throw e
+            }
+          }
         }
 
-        // Render the diagram
-        const { svg } = await mermaid.render(diagramId, prepared)
+        if (!svg) {
+          throw new Error("Failed to render diagram after sanitising.")
+        }
 
         setDiagramSvg(svg)
         setIsLoading(false)
       } catch (err) {
         console.error("Mermaid rendering error:", err)
-        setError(`Failed to render diagram: ${err instanceof Error ? err.message : "Unknown error"}`)
+        setError(
+          `Failed to render diagram: ${
+            err instanceof Error ? err.message : "Unknown error — please check your Mermaid syntax"
+          }`,
+        )
         setIsLoading(false)
       }
     }

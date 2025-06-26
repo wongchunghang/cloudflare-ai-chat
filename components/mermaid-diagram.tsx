@@ -15,45 +15,11 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [mermaidLoaded, setMermaidLoaded] = useState(false)
-
-  // Dynamically import mermaid to avoid SSR issues
-  useEffect(() => {
-    const loadMermaid = async () => {
-      try {
-        const mermaid = (await import("mermaid")).default
-
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: "default",
-          securityLevel: "loose",
-          fontFamily: "inherit",
-          fontSize: 14,
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: true,
-          },
-          sequence: {
-            useMaxWidth: true,
-          },
-          gantt: {
-            useMaxWidth: true,
-          },
-        })
-
-        setMermaidLoaded(true)
-      } catch (err) {
-        console.error("Failed to load Mermaid:", err)
-        setError("Failed to load diagram renderer")
-        setIsLoading(false)
-      }
-    }
-
-    loadMermaid()
-  }, [])
+  const [diagramSvg, setDiagramSvg] = useState<string>("")
 
   useEffect(() => {
-    if (!mermaidLoaded || viewMode !== "visual" || !diagramRef.current) {
+    if (viewMode !== "visual") {
+      setIsLoading(false)
       return
     }
 
@@ -62,33 +28,63 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         setError(null)
         setIsLoading(true)
 
-        const mermaid = (await import("mermaid")).default
+        // Dynamic import with better error handling
+        const mermaidModule = await import("mermaid")
+        const mermaid = mermaidModule.default
 
-        // Clear previous content
-        if (diagramRef.current) {
-          diagramRef.current.innerHTML = ""
-        }
+        // Initialize mermaid with safe configuration
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "default",
+          securityLevel: "loose",
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          fontSize: 16,
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            curve: "basis",
+          },
+          sequence: {
+            useMaxWidth: true,
+            wrap: true,
+          },
+          gantt: {
+            useMaxWidth: true,
+          },
+          pie: {
+            useMaxWidth: true,
+          },
+          journey: {
+            useMaxWidth: true,
+          },
+        })
 
         // Generate unique ID for this diagram
-        const diagramId = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const diagramId = `mermaid-diagram-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
+        // Validate the code first
+        const isValid = await mermaid.parse(code)
+        if (!isValid) {
+          throw new Error("Invalid Mermaid syntax")
+        }
 
         // Render the diagram
         const { svg } = await mermaid.render(diagramId, code)
 
-        if (diagramRef.current) {
-          diagramRef.current.innerHTML = svg
-        }
-
+        setDiagramSvg(svg)
         setIsLoading(false)
       } catch (err) {
         console.error("Mermaid rendering error:", err)
-        setError("Failed to render diagram. Please check the syntax.")
+        setError(`Failed to render diagram: ${err instanceof Error ? err.message : "Unknown error"}`)
         setIsLoading(false)
       }
     }
 
-    renderDiagram()
-  }, [mermaidLoaded, viewMode, code])
+    // Add a small delay to ensure the component is mounted
+    const timeoutId = setTimeout(renderDiagram, 100)
+
+    return () => clearTimeout(timeoutId)
+  }, [viewMode, code])
 
   const copyToClipboard = async () => {
     try {
@@ -153,42 +149,51 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         {viewMode === "visual" ? (
           <div className="p-6 min-h-[200px] flex items-center justify-center bg-white">
             {isLoading ? (
-              <div className="flex items-center space-x-2 text-gray-500">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              <div className="flex flex-col items-center space-y-3 text-gray-500">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                 <span className="text-sm">Rendering diagram...</span>
+                <span className="text-xs text-gray-400">This may take a moment</span>
               </div>
             ) : error ? (
               <div className="text-center max-w-md">
-                <div className="text-red-500 mb-3">
-                  <svg className="h-8 w-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="text-red-500 mb-4">
+                  <svg className="h-12 w-12 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={2}
+                      strokeWidth={1.5}
                       d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
                     />
                   </svg>
-                  <p className="font-medium">{error}</p>
+                  <p className="font-medium text-sm mb-1">Diagram Rendering Failed</p>
+                  <p className="text-xs text-gray-600 mb-3">{error}</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setViewMode("code")} className="text-xs">
-                  View Source Code
-                </Button>
+                <div className="space-y-2">
+                  <Button variant="outline" size="sm" onClick={() => setViewMode("code")} className="text-xs">
+                    View Source Code
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setViewMode("visual")} className="text-xs ml-2">
+                    Try Again
+                  </Button>
+                </div>
               </div>
-            ) : (
+            ) : diagramSvg ? (
               <div
-                ref={diagramRef}
-                className="mermaid w-full flex justify-center"
+                className="mermaid-container w-full flex justify-center"
+                dangerouslySetInnerHTML={{ __html: diagramSvg }}
                 style={{
                   minHeight: "100px",
                   maxWidth: "100%",
                   overflow: "auto",
                 }}
               />
+            ) : (
+              <div className="text-gray-500 text-sm">No diagram to display</div>
             )}
           </div>
         ) : (
           <div className="relative">
-            <pre className="p-4 bg-gray-50 text-sm overflow-auto font-mono leading-relaxed border-0">
+            <pre className="p-4 bg-gray-50 text-sm overflow-auto font-mono leading-relaxed border-0 whitespace-pre-wrap">
               <code className="language-mermaid text-gray-800">{code}</code>
             </pre>
           </div>

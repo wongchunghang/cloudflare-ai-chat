@@ -106,3 +106,42 @@
 .prose th {
   @apply bg-gray-100 font-semibold;
 }
+
+/* Mermaid diagram styles */
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-container .node rect,
+.mermaid-container .node circle,
+.mermaid-container .node ellipse,
+.mermaid-container .node polygon {
+  fill: #f9f9f9;
+  stroke: #333;
+  stroke-width: 1px;
+}
+
+.mermaid-container .edgePath .path {
+  stroke: #333;
+  stroke-width: 1.5px;
+}
+
+.mermaid-container .edgeLabel {
+  background-color: white;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.mermaid-container .cluster rect {
+  fill: #ffffde;
+  stroke: #aaaa33;
+  stroke-width: 1px;
+}
+
+.mermaid-container .titleText {
+  text-anchor: middle;
+  font-size: 18px;
+  fill: #333;
+}

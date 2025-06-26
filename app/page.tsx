@@ -59,6 +59,28 @@ export default function ChatPage() {
     }
   }, [])
 
+  const testMermaidDiagram = () => {
+    const testMessage: Message = {
+      id: Date.now().toString(),
+      role: "assistant",
+      content: `Here's a test Mermaid diagram:
+
+\`\`\`mermaid
+graph TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great! 🎉]
+    B -->|No| D[Debug 🔧]
+    D --> A
+    C --> E[End]
+\`\`\`
+
+This should render as an interactive diagram with visual/code toggle.`,
+      model: selectedModel,
+    }
+
+    setMessages((prev) => [...prev, testMessage])
+  }
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (!input.trim() || isLoading || charCount > MAX_INPUT_CHARS) return
@@ -232,11 +254,18 @@ export default function ChatPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-center">CH AI Assistant</CardTitle>
-              <p className="text-sm text-gray-500 text-center">Multi-model streaming responses with Markdown</p>
+              <p className="text-sm text-gray-500 text-center">
+                Multi-model streaming responses with Markdown & Mermaid
+              </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)} className="p-2">
-              <Settings className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button variant="outline" size="sm" onClick={testMermaidDiagram} className="text-xs">
+                Test Mermaid
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)} className="p-2">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {showSettings && (
@@ -266,7 +295,8 @@ export default function ChatPage() {
               <div className="text-center">
                 <p className="mb-2">Start a conversation by sending a message</p>
                 <p className="text-xs">Current model: {getModelName(selectedModel)}</p>
-                <p className="text-xs mt-1">Try asking: "What is Vercel?" or "Explain React hooks"</p>
+                <p className="text-xs mt-1">Try asking: "Create a flowchart" or "Show me a diagram"</p>
+                <p className="text-xs mt-2 text-blue-500">Click "Test Mermaid" to see diagram functionality</p>
               </div>
             </div>
           ) : (

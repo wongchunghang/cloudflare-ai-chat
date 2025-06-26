@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Copy, Check, Eye, Code } from "lucide-react"
 
@@ -10,135 +10,96 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
-  const diagramRef = useRef<HTMLDivElement>(null)
   const [viewMode, setViewMode] = useState<"visual" | "code">("visual")
   const [error, setError] = useState<string | null>(null)
   const [isCopied, setIsCopied] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [diagramSvg, setDiagramSvg] = useState<string>("")
 
-  // -------------------------------------------------
-  //  PRE-PROCESSORS
-  // -------------------------------------------------
-  // 1) Make sure the diagram directive has a newline after it.
-  function ensureDirectiveNewline(src: string) {
-    const re = /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/im
-    return src.replace(re, (m) => `${m}\n`)
-  }
+  /* ------------------------------------------------------------------ */
+  /*  SANITISERS                                                        */
+  /* ------------------------------------------------------------------ */
 
-  // 2) Add spaces around edge-label pipes (… -->|Yes| B …  →  … --> | Yes | B …)
-  //    and insert a newline when a line ends with }|  or ]|
-  function normaliseEdgeLabelPipes(src: string) {
-    return (
-      src
-        // newline after }| or ]|
-        .replace(/([}\]])\|/g, "$1\n|")
-        // space after edge operator before |
-        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
-        // space after opening |
-        .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
-        // space before closing |
-        .replace(/(?<=[A-Za-z0-9\]}])\|/g, " |")
+  // 1️⃣  Ensure a line-break after the diagram directive
+  const directiveBreak = (src: string) =>
+    src.replace(
+      /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/im,
+      (m) => `${m}\n`,
     )
-  }
 
-  // 3) Combined sanitiser
-  function sanitiseMermaid(raw: string) {
-    let out = raw.replace(/\r\n?/g, "\n")
-    out = ensureDirectiveNewline(out)
-    out = normaliseEdgeLabelPipes(out)
-    return out
-  }
+  // 2️⃣  Normalise edge-label pipes (spaces & possible newline after }|)
+  const normalisePipes = (src: string) =>
+    src
+      .replace(/([}\]])\|/g, "$1\n|")
+      .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
+      .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
+      .replace(/(?<=[A-Za-z0-9\]}])\|/g, " |")
+
+  // 3️⃣  Convert round-corner nodes containing ,, ( or ) into square nodes
+  //     e.g.  A(Some text, with comma)  ->  A["Some text, with comma"]
+  const safeRoundNodes = (src: string) =>
+    src.replace(/([A-Za-z0-9_]+)$$([^)]*[,()][^)]*)$$/g, (_m, id, label) => `${id}["${label.trim()}"]`)
+
+  // Combined sanitiser
+  const sanitise = (raw: string) => normalisePipes(safeRoundNodes(directiveBreak(raw.replace(/\r\n?/g, "\n"))))
+
+  /* ------------------------------------------------------------------ */
+  /*  RENDERING                                                          */
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
     if (viewMode !== "visual") {
       setIsLoading(false)
       return
     }
 
-    const renderDiagram = async () => {
+    let cancelled = false
+
+    const render = async () => {
+      setError(null)
+      setIsLoading(true)
+
+      const prepared = sanitise(code)
+
       try {
-        setError(null)
-        setIsLoading(true)
-
-        const prepared = sanitiseMermaid(code)
-
-        // Dynamic import with better error handling
-        const mermaidModule = await import("mermaid")
-        const mermaid = mermaidModule.default
-
-        // Initialize mermaid with safe configuration
+        const mermaid = (await import("mermaid")).default
         mermaid.initialize({
           startOnLoad: false,
           theme: "default",
           securityLevel: "loose",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
-          fontSize: 16,
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: true,
-            curve: "basis",
-          },
-          sequence: {
-            useMaxWidth: true,
-            wrap: true,
-          },
-          gantt: {
-            useMaxWidth: true,
-          },
-          pie: {
-            useMaxWidth: true,
-          },
-          journey: {
-            useMaxWidth: true,
-          },
         })
 
-        // Generate unique ID for this diagram
-        const diagramId = `mermaid-diagram-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-        // Try parsing / rendering. If it fails, try once more with
-        // an aggressively sanitised version.
-        const current = prepared
-        let svg = ""
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            await mermaid.parse(current)
-            const rendered = await mermaid.render(diagramId, current)
-            svg = rendered.svg
-            break
-          } catch (e) {
-            if (attempt === 0) {
-              console.warn("First Mermaid parse failed – running extra sanitiser")
-              // Nothing extra for now; we already sanitised. Could add more rules here.
-            } else {
-              throw e
-            }
-          }
+        await mermaid.parse(prepared) // will throw if invalid
+        const { svg } = await mermaid.render(id, prepared)
+
+        if (!cancelled) {
+          setDiagramSvg(svg)
+          setIsLoading(false)
         }
-
-        if (!svg) {
-          throw new Error("Failed to render diagram after sanitising.")
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Mermaid rendering error:", e)
+          setError(
+            `Failed to render diagram: ${
+              e instanceof Error ? e.message : "Unknown error — please check your Mermaid syntax"
+            }`,
+          )
+          setIsLoading(false)
         }
-
-        setDiagramSvg(svg)
-        setIsLoading(false)
-      } catch (err) {
-        console.error("Mermaid rendering error:", err)
-        setError(
-          `Failed to render diagram: ${
-            err instanceof Error ? err.message : "Unknown error — please check your Mermaid syntax"
-          }`,
-        )
-        setIsLoading(false)
       }
     }
 
-    // Add a small delay to ensure the component is mounted
-    const timeoutId = setTimeout(renderDiagram, 100)
-
-    return () => clearTimeout(timeoutId)
+    render()
+    return () => {
+      cancelled = true
+    }
   }, [viewMode, code])
 
+  /* ------------------------------------------------------------------ */
+  /*  UI                                                                */
+  /* ------------------------------------------------------------------ */
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(code)
@@ -152,106 +113,61 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   return (
     <div className="my-6 border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
       {/* Header */}
-      <div className="flex justify-between items-center bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center space-x-3">
-          <div className="flex space-x-1">
-            <Button
-              variant={viewMode === "visual" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("visual")}
-              className="h-8 px-3 text-xs"
-            >
-              <Eye className="h-3 w-3 mr-1" />
-              Visual
-            </Button>
-            <Button
-              variant={viewMode === "code" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("code")}
-              className="h-8 px-3 text-xs"
-            >
-              <Code className="h-3 w-3 mr-1" />
-              Code
-            </Button>
-          </div>
-          {title && <span className="text-sm font-medium text-gray-700">{title}</span>}
+      <div className="flex justify-between items-center bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b">
+        <div className="flex items-center space-x-1">
+          <Button
+            variant={viewMode === "visual" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("visual")}
+            className="h-8 px-3 text-xs"
+          >
+            <Eye className="h-3 w-3 mr-1" />
+            Visual
+          </Button>
+          <Button
+            variant={viewMode === "code" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("code")}
+            className="h-8 px-3 text-xs"
+          >
+            <Code className="h-3 w-3 mr-1" />
+            Code
+          </Button>
+          {title && <span className="text-sm ml-3 font-medium text-gray-700">{title}</span>}
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={copyToClipboard}
-          className="h-8 px-3 text-xs text-gray-600 hover:text-gray-800"
-        >
+        <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-8 px-3 text-xs">
           {isCopied ? (
             <>
-              <Check className="h-3 w-3 mr-1 text-green-600" />
-              Copied!
+              <Check className="h-3 w-3 mr-1 text-green-600" /> Copied
             </>
           ) : (
             <>
-              <Copy className="h-3 w-3 mr-1" />
-              Copy
+              <Copy className="h-3 w-3 mr-1" /> Copy
             </>
           )}
         </Button>
       </div>
 
       {/* Content */}
-      <div className="relative">
-        {viewMode === "visual" ? (
-          <div className="p-6 min-h-[200px] flex items-center justify-center bg-white">
-            {isLoading ? (
-              <div className="flex flex-col items-center space-y-3 text-gray-500">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                <span className="text-sm">Rendering diagram...</span>
-                <span className="text-xs text-gray-400">This may take a moment</span>
-              </div>
-            ) : error ? (
-              <div className="text-center max-w-md">
-                <div className="text-red-500 mb-4">
-                  <svg className="h-12 w-12 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                    />
-                  </svg>
-                  <p className="font-medium text-sm mb-1">Diagram Rendering Failed</p>
-                  <p className="text-xs text-gray-600 mb-3">{error}</p>
-                </div>
-                <div className="space-y-2">
-                  <Button variant="outline" size="sm" onClick={() => setViewMode("code")} className="text-xs">
-                    View Source Code
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setViewMode("visual")} className="text-xs ml-2">
-                    Try Again
-                  </Button>
-                </div>
-              </div>
-            ) : diagramSvg ? (
-              <div
-                className="mermaid-container w-full flex justify-center"
-                dangerouslySetInnerHTML={{ __html: diagramSvg }}
-                style={{
-                  minHeight: "100px",
-                  maxWidth: "100%",
-                  overflow: "auto",
-                }}
-              />
-            ) : (
-              <div className="text-gray-500 text-sm">No diagram to display</div>
-            )}
-          </div>
-        ) : (
-          <div className="relative">
-            <pre className="p-4 bg-gray-50 text-sm overflow-auto font-mono leading-relaxed border-0 whitespace-pre-wrap">
-              <code className="language-mermaid text-gray-800">{code}</code>
-            </pre>
-          </div>
-        )}
-      </div>
+      {viewMode === "visual" ? (
+        <div className="p-6 min-h-[200px] flex items-center justify-center">
+          {isLoading ? (
+            <div className="flex flex-col items-center text-gray-500">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2" />
+              Rendering diagram…
+            </div>
+          ) : error ? (
+            <div className="text-center text-red-600 text-sm">{error}</div>
+          ) : (
+            <div className="mermaid-container w-full overflow-auto" dangerouslySetInnerHTML={{ __html: diagramSvg }} />
+          )}
+        </div>
+      ) : (
+        <pre className="p-4 bg-gray-50 text-sm overflow-auto whitespace-pre-wrap">
+          <code className="language-mermaid">{code}</code>
+        </pre>
+      )}
     </div>
   )
 }

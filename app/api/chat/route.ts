@@ -197,7 +197,7 @@ function isSeparatorRow(line: string): boolean {
 }
 
 // Helper function to parse and fix table structure
-function parseAndFixTable(tableText: string): { fixedRows: string[]; removedSecondRow: string[] | null } {
+function parseAndFixTable(tableText: string): string[] {
   console.log("[SERVER] === PARSING TABLE ===")
   console.log("[SERVER] Raw table text:", tableText)
 
@@ -208,7 +208,7 @@ function parseAndFixTable(tableText: string): { fixedRows: string[]; removedSeco
 
   if (lines.length === 0) {
     console.log("[SERVER] No table lines found")
-    return { fixedRows: [], removedSecondRow: null }
+    return []
   }
 
   console.log(`[SERVER] Table lines found: ${lines.length}`)
@@ -230,7 +230,7 @@ function parseAndFixTable(tableText: string): { fixedRows: string[]; removedSeco
 
   if (nonSeparatorLines.length === 0) {
     console.log("[SERVER] No data rows found after removing separators")
-    return { fixedRows: [], removedSecondRow: null }
+    return []
   }
 
   // Find target columns from the first row (header)
@@ -241,7 +241,7 @@ function parseAndFixTable(tableText: string): { fixedRows: string[]; removedSeco
 
   if (targetColumns === 0) {
     console.log("[SERVER] No valid columns found in header")
-    return { fixedRows: [], removedSecondRow: null }
+    return []
   }
 
   const fixedRows = []
@@ -264,23 +264,12 @@ function parseAndFixTable(tableText: string): { fixedRows: string[]; removedSeco
       fixedRows.push(separator)
     }
   }
-
+  fixedRows.splice(1, 1); // Remove the second row (index 1)
   console.log("[SERVER] === FINAL TABLE ROWS ===")
   fixedRows.forEach((row, i) => console.log(`[SERVER] Final Row ${i + 1}: "${row}"`))
-
-  // Remove the 2nd row (index 1) if it exists
-  let removedSecondRow = null
-  if (fixedRows.length > 1) {
-    removedSecondRow = fixedRows.splice(1, 1) // Remove 1 element at index 1
-    console.log(`[SERVER] Removed 2nd row: "${removedSecondRow[0]}"`)
-    console.log("[SERVER] === UPDATED TABLE ROWS AFTER REMOVAL ===")
-    fixedRows.forEach((row, i) => console.log(`[SERVER] Updated Row ${i + 1}: "${row}"`))
-  }
-
   console.log("[SERVER] === END TABLE PARSING ===")
 
-  // Return both the modified fixedRows and the removed row
-  return { fixedRows, removedSecondRow }
+  return fixedRows
 }
 
 // Helper function to clean and normalize response text
@@ -350,15 +339,12 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
       console.log(`[SERVER] Processing table ${tableCount} with ${tableRows.length} rows`)
 
       // Process the complete table
-      const { fixedRows, removedSecondRow } = parseAndFixTable(tableRows.join("\n"))
-      console.log(`[SERVER] Table ${tableCount} processed into ${fixedRows.length} fixed rows`)
-      if (removedSecondRow) {
-        console.log(`[SERVER] Removed separator row: "${removedSecondRow[0]}"`)
-      }
+      const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
+      console.log(`[SERVER] Table ${tableCount} processed into ${fixedTableRows.length} fixed rows`)
 
-      for (let j = 0; j < fixedRows.length; j++) {
-        const row = fixedRows[j]
-        console.log(`[SERVER] Adding table-row chunk ${j + 1}/${fixedRows.length} from table ${tableCount}`)
+      for (let j = 0; j < fixedTableRows.length; j++) {
+        const row = fixedTableRows[j]
+        console.log(`[SERVER] Adding table-row chunk ${j + 1}/${fixedTableRows.length} from table ${tableCount}`)
         chunks.push({ type: "table-row", content: row })
       }
 
@@ -382,10 +368,10 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
   if (inTable && tableRows.length > 0) {
     tableCount++
     console.log(`[SERVER] Processing final table ${tableCount} with ${tableRows.length} rows`)
-    const { fixedRows, removedSecondRow } = parseAndFixTable(tableRows.join("\n"))
-    console.log(`[SERVER] Final table processed into ${fixedRows.length} fixed rows`)
+    const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
+    console.log(`[SERVER] Final table processed into ${fixedTableRows.length} fixed rows`)
 
-    for (const row of fixedRows) {
+    for (const row of fixedTableRows) {
       chunks.push({ type: "table-row", content: row })
     }
   }

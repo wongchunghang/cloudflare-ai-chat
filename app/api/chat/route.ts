@@ -260,7 +260,7 @@ function parseAndFixTable(tableText: string): string[] {
     if (i === 0) {
       console.log(`[SERVER] Adding separator after header row`)
       const separator = createSeparatorRow(targetColumns)
-      console.log(`[SERVER] Created separator: "${separator}"`)
+      console.log(`[SERVER] Created separator(for loop): "${separator}"`)
       fixedRows.push(separator)
     }
   }

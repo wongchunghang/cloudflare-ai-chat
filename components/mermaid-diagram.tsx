@@ -29,30 +29,69 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
 
   // 2️⃣  Fix malformed table-like Mermaid syntax
   function fixMalformedTableSyntax(src: string) {
-    return (
-      src
-        // Remove table separator lines like "| --- | --- | --- |"
-        .replace(/^\s*\|\s*---+\s*(\|\s*---+\s*)*\|\s*$/gm, "")
+    const lines = src.split("\n")
+    const fixedLines = []
 
-        // Fix malformed lines like "| A[...] --> | yes | > B |"
-        // Convert to proper: "A[...] --> |yes| B"
-        .replace(
-          /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}))\s*-->\s*\|\s*([^|]+)\s*\|\s*>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|\s*$/gm,
-          "$1 --> |$2| $3",
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+
+      // Skip empty lines
+      if (!line) continue
+
+      // Skip table separator lines like "| --- | --- | --- |"
+      if (/^\|\s*---+\s*(\|\s*---+\s*)*\|?\s*$/.test(line)) {
+        continue
+      }
+
+      // Fix malformed table-style lines like "| B --> | Yes | C[...] |"
+      if (/^\|\s*[A-Za-z0-9_]+.*-->\s*\|.*\|.*\|?\s*$/.test(line)) {
+        // Extract the parts: node, arrow, label, target
+        const match = line.match(
+          /^\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*(-->|==>|-\.->|-\.)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|?\s*$/,
         )
 
-        // Fix simpler malformed lines like "| A --> | label | > B |"
-        .replace(
-          /^\s*\|\s*([A-Za-z0-9_]+)\s*-->\s*\|\s*([^|]+)\s*\|\s*>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|\s*$/gm,
-          "$1 --> |$2| $3",
+        if (match) {
+          const [, sourceNode, arrow, label, targetNode] = match
+          const cleanLabel = label.trim()
+          const cleanTarget = targetNode.trim()
+
+          // Convert to proper Mermaid syntax
+          fixedLines.push(`    ${sourceNode} ${arrow} |${cleanLabel}| ${cleanTarget}`)
+          continue
+        }
+      }
+
+      // Fix simpler malformed lines like "| A --> | label | B |"
+      if (/^\|\s*[A-Za-z0-9_]+\s*-->\s*\|.*\|.*\|?\s*$/.test(line)) {
+        const match = line.match(
+          /^\|\s*([A-Za-z0-9_]+)\s*(-->|==>|-\.->|-\.)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|?\s*$/,
         )
 
-        // Remove any remaining leading/trailing pipes from lines
-        .replace(/^\s*\|\s*(.+?)\s*\|\s*$/gm, "$1")
+        if (match) {
+          const [, sourceNode, arrow, label, targetNode] = match
+          const cleanLabel = label.trim()
+          const cleanTarget = targetNode.trim()
 
-        // Clean up any remaining ">" symbols before nodes
-        .replace(/>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}))/g, "$1")
-    )
+          fixedLines.push(`    ${sourceNode} ${arrow} |${cleanLabel}| ${cleanTarget}`)
+          continue
+        }
+      }
+
+      // Keep valid Mermaid lines as-is (but clean up any stray pipes)
+      let cleanLine = line
+
+      // Remove leading/trailing pipes from otherwise valid lines
+      if (line.startsWith("|") && line.endsWith("|") && !line.includes("-->")) {
+        cleanLine = line.replace(/^\|\s*/, "").replace(/\s*\|$/, "")
+      }
+
+      // Only add non-empty lines
+      if (cleanLine.trim()) {
+        fixedLines.push(cleanLine)
+      }
+    }
+
+    return fixedLines.join("\n")
   }
 
   // 3️⃣  Remove invalid pipes that appear directly after nodes
@@ -61,12 +100,12 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       src
         // Remove pipe after any node type that's not followed by an arrow
         .replace(
-          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$$$[^)]*\$$$))\s*\|\s*(?!.*(?:-->|==>|-\.->|-\.))/g,
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$\$\$[^)]*\$\$\$))\s*\|\s*(?!.*(?:-->|==>|-\.->|-\.))/g,
           "$1 ",
         )
         // Remove standalone pipe after node when followed by another node
         .replace(
-          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$$$[^)]*\$$$))\s*\|\s+([A-Za-z0-9_]+)/g,
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$\$\$[^)]*\$\$\$))\s*\|\s+([A-Za-z0-9_]+)/g,
           "$1 --> $2",
         )
     )
@@ -76,14 +115,10 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   function normaliseEdgePipes(src: string) {
     return (
       src
-        // space between edge-operator and opening |
-        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, "$1 |")
-        // space AFTER opening | (when followed by text)
-        .replace(/\|\s*(?=[A-Za-z0-9[{"'`])/g, "|")
-        // space BEFORE closing | (when preceded by text)
-        .replace(/(?<=[A-Za-z0-9\]}"'`])\s*\|/g, "|")
-        // ensure proper spacing around edge labels
-        .replace(/(-->|==>|-\.->|-\.)\s*\|([^|]+)\|\s*/g, "$1 |$2| ")
+        // Fix spacing around edge labels: "A --> |label| B"
+        .replace(/(-->|==>|-\.->|-\.)\s*\|\s*([^|]+?)\s*\|\s*/g, "$1 |$2| ")
+        // Clean up any double spaces
+        .replace(/\s+/g, " ")
     )
   }
 
@@ -91,11 +126,21 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   const safeRoundNodes = (src: string) =>
     src.replace(/([A-Za-z0-9_]+)$$([^)]*[,()][^)]*)$$/g, (_m, id, label) => `${id}["${label.trim()}"]`)
 
-  // 6️⃣  Clean up extra whitespace and empty lines
+  // 6️⃣  Clean up extra whitespace and ensure proper indentation
   function cleanWhitespace(src: string) {
     return src
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => {
+        const trimmed = line.trim()
+        if (!trimmed) return ""
+
+        // Add proper indentation for non-directive lines
+        if (trimmed.match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)/i)) {
+          return trimmed
+        } else {
+          return `    ${trimmed}`
+        }
+      })
       .filter((line) => line.length > 0)
       .join("\n")
   }
@@ -128,8 +173,10 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       setIsLoading(true)
 
       const prepared = sanitise(code)
-      console.log("Original Mermaid code:", code)
-      console.log("Sanitized Mermaid code:", prepared)
+      console.log("=== MERMAID SANITIZATION ===")
+      console.log("Original:", code)
+      console.log("Sanitized:", prepared)
+      console.log("=== END SANITIZATION ===")
 
       try {
         const mermaid = (await import("mermaid")).default

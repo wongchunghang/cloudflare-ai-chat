@@ -180,9 +180,20 @@ function createSeparatorRow(columns: number): string {
 // Helper function to check if a line is a separator row
 function isSeparatorRow(line: string): boolean {
   const trimmed = line.trim()
-  const result = /^[\s|:-]+$/.test(trimmed)
+
+  // More comprehensive separator detection
+  // Should match: | --- | --- | or |---|---| or | :---: | ---: | etc.
+  const separatorPattern = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
+  const result = separatorPattern.test(trimmed)
+
   console.log(`[SERVER] Checking if separator: "${trimmed}" -> ${result}`)
-  return result
+
+  // Additional check: if line contains only |, -, :, and whitespace
+  const onlyTableChars = /^[\s|:-]+$/.test(trimmed)
+  const finalResult = result || onlyTableChars
+
+  console.log(`[SERVER] Final separator check: "${trimmed}" -> ${finalResult}`)
+  return finalResult
 }
 
 // Helper function to parse and fix table structure
@@ -203,65 +214,54 @@ function parseAndFixTable(tableText: string): string[] {
   console.log(`[SERVER] Table lines found: ${lines.length}`)
   lines.forEach((line, i) => console.log(`[SERVER] Line ${i + 1}: "${line}"`))
 
-  // Find the header row (first non-separator row)
-  let headerRow = ""
-  let targetColumns = 0
-  let headerIndex = -1
-
+  // First pass: identify all separator rows and remove them
+  const nonSeparatorLines = []
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    console.log(`[SERVER] Examining line ${i + 1} for header: "${line}"`)
-
-    if (!isSeparatorRow(line)) {
-      headerRow = line
-      targetColumns = countColumns(line)
-      headerIndex = i
-      console.log(`[SERVER] Header row found at index ${i}: "${headerRow}"`)
-      console.log(`[SERVER] Target columns: ${targetColumns}`)
-      break
+    if (isSeparatorRow(line)) {
+      console.log(`[SERVER] Removing existing separator at line ${i + 1}: "${line}"`)
     } else {
-      console.log(`[SERVER] Line ${i + 1} is a separator, skipping`)
+      console.log(`[SERVER] Keeping data row at line ${i + 1}: "${line}"`)
+      nonSeparatorLines.push(line)
     }
   }
 
+  console.log(`[SERVER] After removing separators: ${nonSeparatorLines.length} data rows remain`)
+
+  if (nonSeparatorLines.length === 0) {
+    console.log("[SERVER] No data rows found after removing separators")
+    return []
+  }
+
+  // Find target columns from the first row (header)
+  const headerRow = nonSeparatorLines[0]
+  const targetColumns = countColumns(headerRow)
+  console.log(`[SERVER] Header row: "${headerRow}"`)
+  console.log(`[SERVER] Target columns: ${targetColumns}`)
+
   if (targetColumns === 0) {
-    console.log("[SERVER] No valid header row found")
+    console.log("[SERVER] No valid columns found in header")
     return []
   }
 
   const fixedRows = []
-  let separatorAdded = false
 
-  console.log(`[SERVER] Processing ${lines.length} lines...`)
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    console.log(`[SERVER] Processing line ${i + 1}/${lines.length}: "${line}"`)
-
-    // Skip existing separator rows
-    if (isSeparatorRow(line)) {
-      console.log(`[SERVER] Skipping separator row at line ${i + 1}: "${line}"`)
-      continue
-    }
+  // Process each data row
+  for (let i = 0; i < nonSeparatorLines.length; i++) {
+    const line = nonSeparatorLines[i]
+    console.log(`[SERVER] Processing data row ${i + 1}/${nonSeparatorLines.length}: "${line}"`)
 
     // Normalize the row to have the correct number of columns
-    console.log(`[SERVER] Normalizing data row at line ${i + 1}`)
     const normalizedRow = normalizeTableRow(line, targetColumns)
     console.log(`[SERVER] Normalized: "${line}" -> "${normalizedRow}"`)
     fixedRows.push(normalizedRow)
 
-    // Add separator ONLY after the header row (first non-separator row)
-    if (i === headerIndex && !separatorAdded) {
-      console.log(`[SERVER] This is the header row (index ${headerIndex}), adding separator`)
+    // Add separator ONLY after the first row (header)
+    if (i === 0) {
+      console.log(`[SERVER] Adding separator after header row`)
       const separator = createSeparatorRow(targetColumns)
-      console.log(`[SERVER] Adding separator: "${separator}"`)
+      console.log(`[SERVER] Created separator: "${separator}"`)
       fixedRows.push(separator)
-      separatorAdded = true
-      console.log(`[SERVER] Separator added, separatorAdded = ${separatorAdded}`)
-    } else if (i === headerIndex) {
-      console.log(`[SERVER] This is the header row but separator already added`)
-    } else {
-      console.log(`[SERVER] This is a data row (index ${i}), not adding separator`)
     }
   }
 

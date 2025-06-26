@@ -27,50 +27,88 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       (m) => `${m}\n`,
     )
 
-  // 2️⃣  Remove invalid pipes that appear directly after nodes
-  //     e.g. "A{Question} | B" should be "A{Question} --> B"
-  //     Only pipes on edges (arrows) are valid: "A --> | Label | B"
+  // 2️⃣  Fix malformed table-like Mermaid syntax
+  function fixMalformedTableSyntax(src: string) {
+    return (
+      src
+        // Remove table separator lines like "| --- | --- | --- |"
+        .replace(/^\s*\|\s*---+\s*(\|\s*---+\s*)*\|\s*$/gm, "")
+
+        // Fix malformed lines like "| A[...] --> | yes | > B |"
+        // Convert to proper: "A[...] --> |yes| B"
+        .replace(
+          /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}))\s*-->\s*\|\s*([^|]+)\s*\|\s*>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|\s*$/gm,
+          "$1 --> |$2| $3",
+        )
+
+        // Fix simpler malformed lines like "| A --> | label | > B |"
+        .replace(
+          /^\s*\|\s*([A-Za-z0-9_]+)\s*-->\s*\|\s*([^|]+)\s*\|\s*>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|\s*$/gm,
+          "$1 --> |$2| $3",
+        )
+
+        // Remove any remaining leading/trailing pipes from lines
+        .replace(/^\s*\|\s*(.+?)\s*\|\s*$/gm, "$1")
+
+        // Clean up any remaining ">" symbols before nodes
+        .replace(/>\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}))/g, "$1")
+    )
+  }
+
+  // 3️⃣  Remove invalid pipes that appear directly after nodes
   function removeInvalidNodePipes(src: string) {
     return (
       src
         // Remove pipe after any node type that's not followed by an arrow
         .replace(
-          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|$$\([^)]*$$\)))\s*\|\s*(?!.*(?:-->|==>|-\.->|-\.))/g,
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$$$[^)]*\$$$))\s*\|\s*(?!.*(?:-->|==>|-\.->|-\.))/g,
           "$1 ",
         )
         // Remove standalone pipe after node when followed by another node
         .replace(
-          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|$$\([^)]*$$\)))\s*\|\s+([A-Za-z0-9_]+)/g,
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|\$$$[^)]*\$$$))\s*\|\s+([A-Za-z0-9_]+)/g,
           "$1 --> $2",
         )
     )
   }
 
-  // 3️⃣  Normalise edge-label pipes (only on actual arrows)
+  // 4️⃣  Normalise edge-label pipes (only on actual arrows)
   function normaliseEdgePipes(src: string) {
     return (
       src
         // space between edge-operator and opening |
-        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, "$1 | ")
+        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, "$1 |")
         // space AFTER opening | (when followed by text)
-        .replace(/\|\s*(?=[A-Za-z0-9[{"'`])/g, "| ")
+        .replace(/\|\s*(?=[A-Za-z0-9[{"'`])/g, "|")
         // space BEFORE closing | (when preceded by text)
-        .replace(/(?<=[A-Za-z0-9\]}"'`])\s*\|/g, " |")
+        .replace(/(?<=[A-Za-z0-9\]}"'`])\s*\|/g, "|")
+        // ensure proper spacing around edge labels
+        .replace(/(-->|==>|-\.->|-\.)\s*\|([^|]+)\|\s*/g, "$1 |$2| ")
     )
   }
 
-  // 4️⃣  Convert round-corner nodes containing commas/parentheses into square nodes
-  //     e.g.  A(Some text, with comma)  ->  A["Some text, with comma"]
+  // 5️⃣  Convert round-corner nodes containing commas/parentheses into square nodes
   const safeRoundNodes = (src: string) =>
     src.replace(/([A-Za-z0-9_]+)$$([^)]*[,()][^)]*)$$/g, (_m, id, label) => `${id}["${label.trim()}"]`)
+
+  // 6️⃣  Clean up extra whitespace and empty lines
+  function cleanWhitespace(src: string) {
+    return src
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join("\n")
+  }
 
   // Combined sanitiser
   const sanitise = (raw: string) => {
     let result = raw.replace(/\r\n?/g, "\n")
     result = directiveBreak(result)
+    result = fixMalformedTableSyntax(result)
     result = removeInvalidNodePipes(result)
     result = normaliseEdgePipes(result)
     result = safeRoundNodes(result)
+    result = cleanWhitespace(result)
     return result
   }
 
@@ -90,7 +128,8 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       setIsLoading(true)
 
       const prepared = sanitise(code)
-      console.log("Sanitized Mermaid code:", prepared) // Debug log
+      console.log("Original Mermaid code:", code)
+      console.log("Sanitized Mermaid code:", prepared)
 
       try {
         const mermaid = (await import("mermaid")).default

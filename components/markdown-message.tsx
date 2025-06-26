@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { MermaidDiagram } from "./mermaid-diagram"
 
 interface MarkdownMessageProps {
   content: string
@@ -25,6 +26,12 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
           code({ node, inline, className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || "")
             const language = match ? match[1] : null
+
+            // Handle Mermaid diagrams
+            if (language === "mermaid" && !inline) {
+              const code = String(children).replace(/\n$/, "")
+              return <MermaidDiagram code={code} />
+            }
 
             return !inline && language ? (
               <div className="relative rounded-lg overflow-hidden mb-4">
@@ -136,6 +143,7 @@ function formatLanguageName(language: string): string {
     toml: "TOML",
     xml: "XML",
     dockerfile: "Dockerfile",
+    mermaid: "Mermaid",
   }
 
   return languageMap[language.toLowerCase()] || language.toUpperCase()

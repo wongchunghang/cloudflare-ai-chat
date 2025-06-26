@@ -27,23 +27,52 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       (m) => `${m}\n`,
     )
 
-  // 2️⃣  Fix arrow→label spacing: remove *all* whitespace that appears
-  //     between an edge-operator and the opening pipe ( --> |  →  -->| )
-  function normalisePipes(src: string) {
-    // remove spaces **after** an arrow but **before** the first pipe
-    return src.replace(
-      /(-->|==>|-\.->|-\.)(\s+)\|/g, // operator + spaces + |
-      (_match, operator) => `${operator}|`, // keep operator, drop spaces
+  // 2️⃣  Remove invalid pipes that appear directly after nodes
+  //     e.g. "A{Question} | B" should be "A{Question} --> B"
+  //     Only pipes on edges (arrows) are valid: "A --> | Label | B"
+  function removeInvalidNodePipes(src: string) {
+    return (
+      src
+        // Remove pipe after any node type that's not followed by an arrow
+        .replace(
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|$$\([^)]*$$\)))\s*\|\s*(?!.*(?:-->|==>|-\.->|-\.))/g,
+          "$1 ",
+        )
+        // Remove standalone pipe after node when followed by another node
+        .replace(
+          /([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\}|>[^<]*<|{{[^}]*}}|$$\([^)]*$$\)))\s*\|\s+([A-Za-z0-9_]+)/g,
+          "$1 --> $2",
+        )
     )
   }
 
-  // 3️⃣  Convert round-corner nodes containing ,, ( or ) into square nodes
+  // 3️⃣  Normalise edge-label pipes (only on actual arrows)
+  function normaliseEdgePipes(src: string) {
+    return (
+      src
+        // space between edge-operator and opening |
+        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, "$1 | ")
+        // space AFTER opening | (when followed by text)
+        .replace(/\|\s*(?=[A-Za-z0-9[{"'`])/g, "| ")
+        // space BEFORE closing | (when preceded by text)
+        .replace(/(?<=[A-Za-z0-9\]}"'`])\s*\|/g, " |")
+    )
+  }
+
+  // 4️⃣  Convert round-corner nodes containing commas/parentheses into square nodes
   //     e.g.  A(Some text, with comma)  ->  A["Some text, with comma"]
   const safeRoundNodes = (src: string) =>
     src.replace(/([A-Za-z0-9_]+)$$([^)]*[,()][^)]*)$$/g, (_m, id, label) => `${id}["${label.trim()}"]`)
 
   // Combined sanitiser
-  const sanitise = (raw: string) => normalisePipes(safeRoundNodes(directiveBreak(raw.replace(/\r\n?/g, "\n"))))
+  const sanitise = (raw: string) => {
+    let result = raw.replace(/\r\n?/g, "\n")
+    result = directiveBreak(result)
+    result = removeInvalidNodePipes(result)
+    result = normaliseEdgePipes(result)
+    result = safeRoundNodes(result)
+    return result
+  }
 
   /* ------------------------------------------------------------------ */
   /*  RENDERING                                                          */
@@ -61,6 +90,7 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       setIsLoading(true)
 
       const prepared = sanitise(code)
+      console.log("Sanitized Mermaid code:", prepared) // Debug log
 
       try {
         const mermaid = (await import("mermaid")).default
@@ -69,6 +99,10 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
           theme: "default",
           securityLevel: "loose",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
+          flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+          },
         })
 
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -85,7 +119,7 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
           console.error("Mermaid rendering error:", e)
           setError(
             `Failed to render diagram: ${
-              e instanceof Error ? e.message : "Unknown error — please check your Mermaid syntax"
+              e instanceof Error ? e.message : "Unknown error — please check your Mermaid syntax"
             }`,
           )
           setIsLoading(false)
@@ -160,7 +194,28 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
               Rendering diagram…
             </div>
           ) : error ? (
-            <div className="text-center text-red-600 text-sm">{error}</div>
+            <div className="text-center max-w-md">
+              <div className="text-red-500 mb-4">
+                <svg className="h-8 w-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
+                </svg>
+                <p className="font-medium text-sm mb-1">Diagram Rendering Failed</p>
+                <p className="text-xs text-gray-600 mb-3">{error}</p>
+              </div>
+              <div className="space-y-2">
+                <Button variant="outline" size="sm" onClick={() => setViewMode("code")} className="text-xs">
+                  View Source Code
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setViewMode("visual")} className="text-xs ml-2">
+                  Try Again
+                </Button>
+              </div>
+            </div>
           ) : (
             <div className="mermaid-container w-full overflow-auto" dangerouslySetInnerHTML={{ __html: diagramSvg }} />
           )}

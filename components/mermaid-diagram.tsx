@@ -17,6 +17,16 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [diagramSvg, setDiagramSvg] = useState<string>("")
 
+  // --- tiny fixer -----------------------------------------------------------
+  // Adds a newline after the first directive (graph / flowchart / sequence…)
+  // if the user forgot it or Markdown collapsed it.
+  function fixMissingDirectiveNewline(raw: string) {
+    const directivePattern =
+      /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/i
+    return raw.replace(directivePattern, (m) => `${m}\n`)
+  }
+  // --------------------------------------------------------------------------
+
   useEffect(() => {
     if (viewMode !== "visual") {
       setIsLoading(false)
@@ -27,6 +37,8 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       try {
         setError(null)
         setIsLoading(true)
+
+        const prepared = fixMissingDirectiveNewline(code.replace(/\r\n?/g, "\n"))
 
         // Dynamic import with better error handling
         const mermaidModule = await import("mermaid")
@@ -63,13 +75,13 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         const diagramId = `mermaid-diagram-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
         // Validate the code first
-        const isValid = await mermaid.parse(code)
+        const isValid = await mermaid.parse(prepared)
         if (!isValid) {
           throw new Error("Invalid Mermaid syntax")
         }
 
         // Render the diagram
-        const { svg } = await mermaid.render(diagramId, code)
+        const { svg } = await mermaid.render(diagramId, prepared)
 
         setDiagramSvg(svg)
         setIsLoading(false)

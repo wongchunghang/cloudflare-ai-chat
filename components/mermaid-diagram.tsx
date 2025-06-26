@@ -27,21 +27,13 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       (m) => `${m}\n`,
     )
 
-  // 2️⃣  Normalise edge-label pipes
-  //     • guarantees one space BEFORE a pipe that follows } or ]
-  //     • guarantees one space AFTER an opening pipe
-  //     • guarantees one space BEFORE a closing pipe
+  // 2️⃣  Fix arrow→label spacing: remove *all* whitespace that appears
+  //     between an edge-operator and the opening pipe ( --> |  →  -->| )
   function normalisePipes(src: string) {
-    return (
-      src
-        // ensure “} |” or “] |” (NOT a newline)
-        .replace(/([}\]])\s*\|/g, "$1 |")
-        // space between edge-operator and opening |
-        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
-        // space AFTER opening |
-        .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
-        // space BEFORE closing |
-        .replace(/(?<=[A-Za-z0-9\]}])\s*\|/g, " |")
+    // remove spaces **after** an arrow but **before** the first pipe
+    return src.replace(
+      /(-->|==>|-\.->|-\.)(\s+)\|/g, // operator + spaces + |
+      (_match, operator) => `${operator}|`, // keep operator, drop spaces
     )
   }
 

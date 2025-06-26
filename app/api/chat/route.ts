@@ -102,20 +102,112 @@ function findStringValues(obj: any, maxDepth = 3, currentDepth = 0): string[] {
   return strings
 }
 
-// Helper function to detect if content contains tables
-function containsTable(text: string): boolean {
-  // Look for table patterns
-  const tablePattern = /\|.*\|/
-  return tablePattern.test(text)
+// Helper function to check if a line looks like a table row
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim()
+  // Must contain at least one pipe and have content
+  return trimmed.includes("|") && trimmed.length > 2
+}
+
+// Helper function to check if a line is a table separator
+function isTableSeparator(line: string): boolean {
+  const trimmed = line.trim()
+  // Separator contains only |, -, :, and whitespace
+  const separatorPattern = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
+  return separatorPattern.test(trimmed)
+}
+
+// Helper function to normalize table structure
+function normalizeTable(tableLines: string[]): string {
+  console.log("[SERVER] === NORMALIZING COMPLETE TABLE ===")
+  console.log(`[SERVER] Input table has ${tableLines.length} lines`)
+
+  if (tableLines.length === 0) {
+    console.log("[SERVER] Empty table, returning empty string")
+    return ""
+  }
+
+  // Filter out empty lines and ensure all lines are table rows
+  const validRows = tableLines.map((line) => line.trim()).filter((line) => line.length > 0 && isTableRow(line))
+
+  console.log(`[SERVER] Valid table rows: ${validRows.length}`)
+
+  if (validRows.length === 0) {
+    console.log("[SERVER] No valid table rows found")
+    return ""
+  }
+
+  // Separate data rows from separator rows
+  const dataRows = []
+  const separatorRows = []
+
+  for (let i = 0; i < validRows.length; i++) {
+    const row = validRows[i]
+    if (isTableSeparator(row)) {
+      console.log(`[SERVER] Found separator at position ${i}: "${row}"`)
+      separatorRows.push({ index: i, content: row })
+    } else {
+      console.log(`[SERVER] Found data row at position ${i}: "${row.substring(0, 50)}..."`)
+      dataRows.push(row)
+    }
+  }
+
+  console.log(`[SERVER] Data rows: ${dataRows.length}, Separator rows: ${separatorRows.length}`)
+
+  if (dataRows.length === 0) {
+    console.log("[SERVER] No data rows found")
+    return ""
+  }
+
+  // Determine column count from the first data row (header)
+  const headerRow = dataRows[0]
+  const columnCount = countTableColumns(headerRow)
+  console.log(`[SERVER] Header row: "${headerRow}"`)
+  console.log(`[SERVER] Column count: ${columnCount}`)
+
+  if (columnCount === 0) {
+    console.log("[SERVER] Invalid column count")
+    return ""
+  }
+
+  // Normalize all data rows to have consistent column count
+  const normalizedRows = dataRows.map((row, index) => {
+    const normalized = normalizeTableRow(row, columnCount)
+    console.log(`[SERVER] Row ${index + 1}: "${row}" -> "${normalized}"`)
+    return normalized
+  })
+
+  // Create the final table: header + separator + data rows
+  const finalTable = []
+
+  // Add header
+  finalTable.push(normalizedRows[0])
+
+  // Add separator after header
+  const separator = createTableSeparator(columnCount)
+  finalTable.push(separator)
+  console.log(`[SERVER] Added separator: "${separator}"`)
+
+  // Add remaining data rows
+  for (let i = 1; i < normalizedRows.length; i++) {
+    finalTable.push(normalizedRows[i])
+  }
+
+  const result = finalTable.join("\n")
+  console.log("[SERVER] === FINAL NORMALIZED TABLE ===")
+  console.log(result)
+  console.log("[SERVER] === END NORMALIZED TABLE ===")
+
+  return result
 }
 
 // Helper function to count columns in a table row
-function countColumns(row: string): number {
+function countTableColumns(row: string): number {
   if (!row.includes("|")) return 0
 
   let cleaned = row.trim()
 
-  // Remove leading and trailing pipes if they exist
+  // Remove leading and trailing pipes
   if (cleaned.startsWith("|")) cleaned = cleaned.substring(1)
   if (cleaned.endsWith("|")) cleaned = cleaned.substring(0, cleaned.length - 1)
 
@@ -125,264 +217,189 @@ function countColumns(row: string): number {
     .map((cell) => cell.trim())
     .filter((cell) => cell.length > 0)
 
-  console.log(`[SERVER] Column count for "${row}": ${cells.length} cells`)
   return cells.length
 }
 
-// Helper function to normalize a table row to have the specified number of columns
+// Helper function to normalize a single table row
 function normalizeTableRow(row: string, targetColumns: number): string {
   if (!row.includes("|")) return row
 
   let cleaned = row.trim()
 
-  // Remove leading/trailing pipes temporarily to work with cell content
+  // Remove leading/trailing pipes temporarily
   if (cleaned.startsWith("|")) cleaned = cleaned.substring(1)
   if (cleaned.endsWith("|")) cleaned = cleaned.substring(0, cleaned.length - 1)
 
-  // Split by | and clean up each cell
+  // Split and clean cells
   let cells = cleaned.split("|").map((cell) => cell.trim())
 
-  console.log(`[SERVER] Normalizing row with ${cells.length} cells to ${targetColumns} columns`)
-  console.log(`[SERVER] Original cells:`, cells)
-
-  // Adjust number of cells to match target
+  // Adjust cell count
   if (cells.length > targetColumns) {
-    // Too many cells - merge the extra ones into the last cell
+    // Merge extra cells into the last column
     const extraCells = cells.slice(targetColumns - 1)
     cells = cells.slice(0, targetColumns - 1)
     cells.push(extraCells.join(" | "))
-    console.log(`[SERVER] Merged extra cells into last column`)
   } else if (cells.length < targetColumns) {
-    // Too few cells - add empty cells
+    // Add empty cells
     while (cells.length < targetColumns) {
       cells.push("")
     }
-    console.log(`[SERVER] Added empty cells to reach target`)
   }
 
-  console.log(`[SERVER] Final cells:`, cells)
-
-  // Reconstruct the row
-  const result = "| " + cells.join(" | ") + " |"
-  console.log(`[SERVER] Normalized result: "${result}"`)
-  return result
+  // Reconstruct row
+  return "| " + cells.join(" | ") + " |"
 }
 
-// Helper function to create a separator row
-function createSeparatorRow(columns: number): string {
-  console.log(`[SERVER] Creating separator row for ${columns} columns`)
+// Helper function to create table separator
+function createTableSeparator(columns: number): string {
   const separators = Array(columns).fill("---")
-  const result = "| " + separators.join(" | ") + " |"
-  console.log(`[SERVER] Created separator: "${result}"`)
-  return result
-}
-
-// Helper function to check if a line is a separator row
-function isSeparatorRow(line: string): boolean {
-  const trimmed = line.trim()
-
-  // More comprehensive separator detection
-  // Should match: | --- | --- | or |---|---| or | :---: | ---: | etc.
-  const separatorPattern = /^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
-  const result = separatorPattern.test(trimmed)
-
-  console.log(`[SERVER] Checking if separator: "${trimmed}" -> ${result}`)
-
-  // Additional check: if line contains only |, -, :, and whitespace
-  const onlyTableChars = /^[\s|:-]+$/.test(trimmed)
-  const finalResult = result || onlyTableChars
-
-  console.log(`[SERVER] Final separator check: "${trimmed}" -> ${finalResult}`)
-  return finalResult
-}
-
-// Helper function to parse and fix table structure
-function parseAndFixTable(tableText: string): string[] {
-  console.log("[SERVER] === PARSING TABLE ===")
-  console.log("[SERVER] Raw table text:", tableText)
-
-  const lines = tableText
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line.includes("|"))
-
-  if (lines.length === 0) {
-    console.log("[SERVER] No table lines found")
-    return []
-  }
-
-  console.log(`[SERVER] Table lines found: ${lines.length}`)
-  lines.forEach((line, i) => console.log(`[SERVER] Line ${i + 1}: "${line}"`))
-
-  // First pass: identify all separator rows and remove them
-  const nonSeparatorLines = []
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (isSeparatorRow(line)) {
-      console.log(`[SERVER] Removing existing separator at line ${i + 1}: "${line}"`)
-    } else {
-      console.log(`[SERVER] Keeping data row at line ${i + 1}: "${line}"`)
-      nonSeparatorLines.push(line)
-    }
-  }
-
-  console.log(`[SERVER] After removing separators: ${nonSeparatorLines.length} data rows remain`)
-
-  if (nonSeparatorLines.length === 0) {
-    console.log("[SERVER] No data rows found after removing separators")
-    return []
-  }
-
-  // Find target columns from the first row (header)
-  const headerRow = nonSeparatorLines[0]
-  const targetColumns = countColumns(headerRow)
-  console.log(`[SERVER] Header row: "${headerRow}"`)
-  console.log(`[SERVER] Target columns: ${targetColumns}`)
-
-  if (targetColumns === 0) {
-    console.log("[SERVER] No valid columns found in header")
-    return []
-  }
-
-  const fixedRows = []
-
-  // Process each data row
-  for (let i = 0; i < nonSeparatorLines.length; i++) {
-    const line = nonSeparatorLines[i]
-    console.log(`[SERVER] Processing data row ${i + 1}/${nonSeparatorLines.length}: "${line}"`)
-
-    // Normalize the row to have the correct number of columns
-    const normalizedRow = normalizeTableRow(line, targetColumns)
-    console.log(`[SERVER] Normalized: "${line}" -> "${normalizedRow}"`)
-    fixedRows.push(normalizedRow)
-
-    // Add separator ONLY after the first row (header)
-    if (i === 0) {
-      console.log(`[SERVER] Adding separator after header row`)
-      const separator = createSeparatorRow(targetColumns)
-      console.log(`[SERVER] Created separator(for loop): "${separator}"`)
-      fixedRows.push(separator)
-    }
-  }
-
-  console.log("[SERVER] === FINAL TABLE ROWS ===")
-  fixedRows.forEach((row, i) => console.log(`[SERVER] Final Row ${i + 1}: "${row}"`))
-  console.log("[SERVER] === END TABLE PARSING ===")
-
-  return fixedRows
+  return "| " + separators.join(" | ") + " |"
 }
 
 // Helper function to clean and normalize response text
 function cleanResponseText(text: string): string {
-  // First, handle literal escape sequences
+  // Handle literal escape sequences
   let cleaned = text
-    .replace(/\\n/g, "\n") // Convert literal \n to newlines
-    .replace(/\\t/g, "\t") // Convert literal \t to tabs
-    .replace(/\\r/g, "\r") // Convert literal \r to carriage returns
-    .replace(/\\\\/g, "\\") // Convert double backslashes to single
-    .replace(/\\"/g, '"') // Convert escaped quotes
-    .replace(/^\s*["']|["']\s*$/g, "") // Remove surrounding quotes
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\r/g, "\r")
+    .replace(/\\\\/g, "\\")
+    .replace(/\\"/g, '"')
+    .replace(/^\s*["']|["']\s*$/g, "")
     .trim()
 
-  // Fix hyphen-style bullet points (common in Llama 3.1 70B)
-  // Look for lines starting with "- " and ensure they have proper line breaks
+  // Fix hyphen-style bullet points
   cleaned = cleaned.replace(/([^\n])(- )/g, "$1\n\n$2")
-
-  // Ensure bullet points have proper spacing
   cleaned = cleaned.replace(/\n- /g, "\n\n- ")
 
-  // Fix numbered lists that might be missing line breaks
+  // Fix numbered lists
   cleaned = cleaned.replace(/(\d+\.\s+[^\n]+)(\d+\.\s+)/g, "$1\n\n$2")
 
-  // Fix consecutive headers that might be missing line breaks
+  // Fix consecutive headers
   cleaned = cleaned.replace(/(\*\*[^*]+\*\*)(\*\*)/g, "$1\n\n$2")
 
   return cleaned
 }
 
-// Helper function to split content into streamable chunks with table awareness
+// NEW: Complete table-aware content chunking
 function createStreamableChunks(text: string): Array<{ type: string; content: string }> {
-  console.log("[SERVER] === CREATING STREAMABLE CHUNKS ===")
+  console.log("[SERVER] === CREATING STREAMABLE CHUNKS (TABLE-AWARE) ===")
+
   const chunks = []
   const lines = text.split("\n")
-  let currentChunk = ""
+  let currentTextChunk = ""
+  let currentTableLines = []
   let inTable = false
-  let tableRows = []
   let tableCount = 0
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    console.log(`[SERVER] Processing line ${i + 1}: "${line.substring(0, 50)}..."`)
+    const trimmedLine = line.trim()
 
-    // Detect table start
-    if (line.includes("|") && !inTable) {
-      tableCount++
-      console.log(`[SERVER] Table ${tableCount} start detected at line ${i + 1}`)
-      // Flush any existing content
-      if (currentChunk.trim()) {
-        console.log(`[SERVER] Flushing text chunk before table: "${currentChunk.substring(0, 50)}..."`)
-        chunks.push({ type: "text", content: currentChunk.trim() })
-        currentChunk = ""
+    console.log(`[SERVER] Line ${i + 1}: "${trimmedLine.substring(0, 60)}..." (inTable: ${inTable})`)
+
+    // Check if this line starts a table
+    if (!inTable && isTableRow(trimmedLine)) {
+      console.log(`[SERVER] 🔍 Potential table start detected at line ${i + 1}`)
+
+      // Look ahead to confirm this is actually a table (not just a single line with |)
+      let isActualTable = false
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const nextLine = lines[j].trim()
+        if (isTableRow(nextLine)) {
+          isActualTable = true
+          console.log(`[SERVER] ✅ Confirmed table - found another table row at line ${j + 1}`)
+          break
+        } else if (nextLine.length > 0) {
+          // Non-empty, non-table line found - probably not a table
+          console.log(`[SERVER] ❌ Not a table - found non-table content at line ${j + 1}`)
+          break
+        }
       }
-      inTable = true
-      tableRows = [line]
-      console.log(`[SERVER] Started collecting table rows for table ${tableCount}`)
+
+      if (isActualTable) {
+        tableCount++
+        console.log(`[SERVER] 📊 Starting table ${tableCount} collection`)
+
+        // Flush any existing text content
+        if (currentTextChunk.trim()) {
+          console.log(`[SERVER] 📝 Flushing text chunk before table: "${currentTextChunk.substring(0, 50)}..."`)
+          chunks.push({ type: "text", content: currentTextChunk.trim() })
+          currentTextChunk = ""
+        }
+
+        inTable = true
+        currentTableLines = [line]
+      } else {
+        // Not actually a table, treat as regular text
+        console.log(`[SERVER] 📝 False alarm - treating as regular text`)
+        currentTextChunk += (currentTextChunk ? "\n" : "") + line
+      }
     }
-    // Continue collecting table rows
-    else if (inTable && line.includes("|")) {
-      tableRows.push(line)
-      console.log(`[SERVER] Added row to table ${tableCount}: "${line.substring(0, 50)}..."`)
+    // Continue collecting table lines
+    else if (inTable && isTableRow(trimmedLine)) {
+      console.log(`[SERVER] 📊 Adding line to table ${tableCount}`)
+      currentTableLines.push(line)
     }
-    // Detect table end
-    else if (inTable && !line.includes("|")) {
-      console.log(`[SERVER] Table ${tableCount} end detected at line ${i + 1}`)
-      console.log(`[SERVER] Processing table ${tableCount} with ${tableRows.length} rows`)
+    // End of table detected
+    else if (inTable && !isTableRow(trimmedLine)) {
+      console.log(`[SERVER] 🏁 Table ${tableCount} ended at line ${i + 1}`)
+      console.log(`[SERVER] 📊 Processing complete table ${tableCount} with ${currentTableLines.length} lines`)
 
       // Process the complete table
-      const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
-      console.log(`[SERVER] Table ${tableCount} processed into ${fixedTableRows.length} fixed rows`)
+      const normalizedTable = normalizeTable(currentTableLines)
 
-      for (let j = 0; j < fixedTableRows.length; j++) {
-        const row = fixedTableRows[j]
-        console.log(`[SERVER] Adding table-row chunk ${j + 1}/${fixedTableRows.length} from table ${tableCount}`)
-        chunks.push({ type: "table-row", content: row })
+      if (normalizedTable.trim()) {
+        console.log(`[SERVER] ✅ Adding complete table ${tableCount} as single chunk`)
+        chunks.push({ type: "table", content: normalizedTable })
+      } else {
+        console.log(`[SERVER] ⚠️ Table ${tableCount} normalization failed, skipping`)
       }
 
+      // Reset table collection
       inTable = false
-      tableRows = []
-      console.log(`[SERVER] Finished processing table ${tableCount}`)
+      currentTableLines = []
 
-      // Start new text chunk
-      if (line.trim()) {
-        currentChunk = line
-        console.log(`[SERVER] Started new text chunk after table: "${line.substring(0, 50)}..."`)
+      // Start new text chunk with current line (if not empty)
+      if (trimmedLine) {
+        currentTextChunk = line
+        console.log(`[SERVER] 📝 Starting new text chunk after table`)
       }
     }
     // Regular text line
     else if (!inTable) {
-      currentChunk += (currentChunk ? "\n" : "") + line
+      currentTextChunk += (currentTextChunk ? "\n" : "") + line
+    }
+    // Skip empty lines while in table (they'll be handled by normalization)
+    else {
+      console.log(`[SERVER] ⏭️ Skipping empty line while in table`)
     }
   }
 
   // Handle any remaining table
-  if (inTable && tableRows.length > 0) {
-    tableCount++
-    console.log(`[SERVER] Processing final table ${tableCount} with ${tableRows.length} rows`)
-    const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
-    console.log(`[SERVER] Final table processed into ${fixedTableRows.length} fixed rows`)
+  if (inTable && currentTableLines.length > 0) {
+    console.log(`[SERVER] 🏁 Processing final table ${tableCount} with ${currentTableLines.length} lines`)
+    const normalizedTable = normalizeTable(currentTableLines)
 
-    for (const row of fixedTableRows) {
-      chunks.push({ type: "table-row", content: row })
+    if (normalizedTable.trim()) {
+      console.log(`[SERVER] ✅ Adding final complete table as single chunk`)
+      chunks.push({ type: "table", content: normalizedTable })
     }
   }
 
   // Handle any remaining text
-  if (currentChunk.trim()) {
-    console.log(`[SERVER] Adding final text chunk: "${currentChunk.substring(0, 50)}..."`)
-    chunks.push({ type: "text", content: currentChunk.trim() })
+  if (currentTextChunk.trim()) {
+    console.log(`[SERVER] 📝 Adding final text chunk`)
+    chunks.push({ type: "text", content: currentTextChunk.trim() })
   }
 
-  console.log(`[SERVER] === CHUNKS CREATED: ${chunks.length} total ===`)
+  console.log(`[SERVER] === CHUNKS SUMMARY ===`)
+  console.log(`[SERVER] Total chunks: ${chunks.length}`)
+  chunks.forEach((chunk, i) => {
+    console.log(`[SERVER] Chunk ${i + 1}: ${chunk.type} (${chunk.content.length} chars)`)
+  })
+  console.log(`[SERVER] === END CHUNKS SUMMARY ===`)
+
   return chunks
 }
 
@@ -404,7 +421,7 @@ export async function POST(req: Request) {
     console.log("Sending request to worker...")
     const requestBody = {
       prompt: userPrompt,
-      ...(model && { model }), // Include model if specified
+      ...(model && { model }),
     }
 
     const response = await fetch(workerUrl, {
@@ -441,8 +458,6 @@ export async function POST(req: Request) {
       console.log("Attempting to parse as JSON...")
       const data = JSON.parse(responseText)
       console.log("JSON parsing successful!")
-
-      // Extract response using the robust extraction function
       aiResponse = extractAIResponse(data, model)
     } catch (jsonError) {
       console.log("JSON parsing failed:", jsonError.message)
@@ -469,21 +484,15 @@ export async function POST(req: Request) {
     console.log("First 300 chars:", cleanedResponse.substring(0, 300))
     console.log("=== END CLEANED RESPONSE ===")
 
-    // Create streamable chunks
+    // Create streamable chunks with complete table handling
     const streamChunks = createStreamableChunks(cleanedResponse)
-    console.log("=== STREAM CHUNKS ===")
-    console.log("Total chunks:", streamChunks.length)
-    streamChunks.forEach((chunk, i) => {
-      console.log(`Chunk ${i + 1}: ${chunk.type} - "${chunk.content.substring(0, 200)}..."`)
-    })
-    console.log("=== END STREAM CHUNKS ===")
 
-    // Create a streaming response that sends chunks of the AI response
+    // Create streaming response
     const encoder = new TextEncoder()
 
     const stream = new ReadableStream({
       start(controller) {
-        console.log("Starting intelligent stream...")
+        console.log("Starting table-aware streaming...")
 
         let chunkIndex = 0
 
@@ -491,26 +500,12 @@ export async function POST(req: Request) {
           if (chunkIndex < streamChunks.length) {
             const chunk = streamChunks[chunkIndex]
             const isLastChunk = chunkIndex === streamChunks.length - 1
-            const nextChunk = chunkIndex < streamChunks.length - 1 ? streamChunks[chunkIndex + 1] : null
 
             let textToSend = chunk.content
 
+            // Add appropriate spacing after chunks
             if (!isLastChunk) {
-              if (chunk.type === "text") {
-                textToSend += "\n\n"
-              } else if (chunk.type === "table-row") {
-                // Check if next chunk is also a table row
-                if (nextChunk && nextChunk.type === "table-row") {
-                  textToSend += "\n" // Single newline between table rows
-                } else {
-                  textToSend += "\n\n" // Double newline after table ends
-                }
-              }
-            } else {
-              // Last chunk - ensure proper ending
-              if (chunk.type === "table-row") {
-                textToSend += "\n\n"
-              }
+              textToSend += "\n\n"
             }
 
             const sseChunk = `data: ${JSON.stringify({
@@ -519,17 +514,17 @@ export async function POST(req: Request) {
             })}\n\n`
 
             console.log(
-              `Sending ${chunk.type} chunk ${chunkIndex + 1}/${streamChunks.length}: "${chunk.content.substring(0, 300)}..."`,
+              `Sending ${chunk.type} chunk ${chunkIndex + 1}/${streamChunks.length} (${chunk.content.length} chars)`,
             )
             controller.enqueue(encoder.encode(sseChunk))
 
             chunkIndex++
 
-            // Adjust timing based on content type
-            const delay = chunk.type === "table-row" ? 300 : chunk.type === "text" ? 500 : 200
+            // Adjust timing: tables get more time to render
+            const delay = chunk.type === "table" ? 800 : 400
             setTimeout(sendNextChunk, delay)
           } else {
-            console.log("Intelligent stream complete, closing...")
+            console.log("Table-aware streaming complete")
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "finish" })}\n\n`))
             controller.close()
           }

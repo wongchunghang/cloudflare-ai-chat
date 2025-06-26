@@ -334,7 +334,7 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
       console.log(`[SERVER] Added row to table ${tableCount}: "${line.substring(0, 50)}..."`)
     }
     // Detect table end
-    else if (inTable && !line.includes("|")) {
+    else if (inTable && !line.includes("|")&& line.trim() !== "") {
       console.log(`[SERVER] Table ${tableCount} end detected at line ${i + 1}`)
       console.log(`[SERVER] Processing table ${tableCount} with ${tableRows.length} rows`)
 

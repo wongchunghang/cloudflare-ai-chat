@@ -257,12 +257,12 @@ function parseAndFixTable(tableText: string): string[] {
     fixedRows.push(normalizedRow)
 
     // Add separator ONLY after the first row (header)
-    /*if (i === 0) {
+    if (i === 0) {
       console.log(`[SERVER] Adding separator after header row`)
       const separator = createSeparatorRow(targetColumns)
       console.log(`[SERVER] Created separator: "${separator}"`)
       fixedRows.push(separator)
-    }*/
+    }
   }
 
   console.log("[SERVER] === FINAL TABLE ROWS ===")

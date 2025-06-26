@@ -339,7 +339,7 @@ function createStreamableChunks(text: string): Array<{ type: string; content: st
       console.log(`[SERVER] Processing table ${tableCount} with ${tableRows.length} rows`)
 
       // Process the complete table
-      const fixedTableRows = tableRows.join("\n")
+      const fixedTableRows = parseAndFixTable(tableRows.join("\n"))
       console.log(`[SERVER] Table ${tableCount} processed into ${fixedTableRows.length} fixed rows`)
 
       for (let j = 0; j < fixedTableRows.length; j++) {

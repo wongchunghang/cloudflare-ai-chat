@@ -16,12 +16,6 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
     .replace(/\n\*\s(?!\|)/g, "\n\n* ")
     // Ensure proper spacing for numbered lists
     .replace(/\n(\d+\.\s)/g, "\n\n$1")
-    // Fix table formatting - ensure proper spacing around table separators
-    .replace(/\|\s*-+\s*\|/g, (match) => {
-      // Count the number of cells and create proper separator
-      const cellCount = (match.match(/\|/g) || []).length - 1
-      return "|" + " --- |".repeat(cellCount) + " --- |"
-    })
 
   return (
     <div className={`prose prose-sm max-w-none ${className}`}>
@@ -74,23 +68,33 @@ export function MarkdownMessage({ content, className = "" }: MarkdownMessageProp
               {children}
             </a>
           ),
+          // Enhanced table styling with Tailwind
           table: ({ children }) => (
-            <div className="overflow-x-auto my-4">
-              <table className="min-w-full border-collapse border border-gray-300 bg-white rounded-lg shadow-sm">
-                {children}
-              </table>
+            <div className="overflow-x-auto my-6 rounded-lg shadow-sm border border-gray-200">
+              <table className="min-w-full border-collapse bg-white">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
-          tbody: ({ children }) => <tbody className="divide-y divide-gray-200">{children}</tbody>,
-          tr: ({ children }) => <tr className="hover:bg-gray-50">{children}</tr>,
+          thead: ({ children }) => <thead className="bg-gradient-to-r from-gray-50 to-gray-100">{children}</thead>,
+          tbody: ({ children }) => <tbody className="divide-y divide-gray-200 bg-white">{children}</tbody>,
+          tr: ({ children, ...props }) => {
+            // Check if this is a header row (inside thead)
+            const isHeaderRow = props.node?.parent?.tagName === "thead"
+
+            return <tr className={isHeaderRow ? "" : "hover:bg-gray-50 transition-colors duration-150"}>{children}</tr>
+          },
           th: ({ children }) => (
-            <th className="border border-gray-300 px-4 py-3 bg-gray-100 font-semibold text-left text-gray-900">
-              {children}
+            <th className="border-r border-gray-200 last:border-r-0 px-6 py-4 text-left text-sm font-semibold text-gray-900 bg-gray-50">
+              <div className="flex items-center space-x-1">
+                <span>{children}</span>
+              </div>
             </th>
           ),
-          td: ({ children }) => <td className="border border-gray-300 px-4 py-3 text-gray-700">{children}</td>,
-          hr: () => <hr className="my-4 border-gray-300" />,
+          td: ({ children }) => (
+            <td className="border-r border-gray-200 last:border-r-0 px-6 py-4 text-sm text-gray-700 leading-relaxed">
+              {children}
+            </td>
+          ),
+          hr: () => <hr className="my-6 border-gray-300" />,
           // Custom handling for better spacing
           div: ({ children }) => <div className="mb-2">{children}</div>,
         }}

@@ -27,13 +27,23 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       (m) => `${m}\n`,
     )
 
-  // 2️⃣  Normalise edge-label pipes (spaces & possible newline after }|)
-  const normalisePipes = (src: string) =>
-    src
-      .replace(/([}\]])\|/g, "$1\n|")
-      .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
-      .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
-      .replace(/(?<=[A-Za-z0-9\]}])\|/g, " |")
+  // 2️⃣  Normalise edge-label pipes
+  //     • guarantees one space BEFORE a pipe that follows } or ]
+  //     • guarantees one space AFTER an opening pipe
+  //     • guarantees one space BEFORE a closing pipe
+  function normalisePipes(src: string) {
+    return (
+      src
+        // ensure “} |” or “] |” (NOT a newline)
+        .replace(/([}\]])\s*\|/g, "$1 |")
+        // space between edge-operator and opening |
+        .replace(/(-->|==>|-\.->|-\.)\s*\|/g, (m) => m.replace(/\s*\|/, " | "))
+        // space AFTER opening |
+        .replace(/\|\s*(?=[A-Za-z0-9[{])/g, "| ")
+        // space BEFORE closing |
+        .replace(/(?<=[A-Za-z0-9\]}])\s*\|/g, " |")
+    )
+  }
 
   // 3️⃣  Convert round-corner nodes containing ,, ( or ) into square nodes
   //     e.g.  A(Some text, with comma)  ->  A["Some text, with comma"]

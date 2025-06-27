@@ -24,10 +24,17 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
     // Remove all table separator lines like | --- | --- | --- |
     cleaned = cleaned.replace(/^\s*\|\s*---+\s*(\|\s*---+\s*)*\|?\s*$/gm, "")
 
+    // Fix multiple flow statements on the same line by adding line breaks
+    // Pattern: NodeA --> NodeB    NodeC --> NodeD
+    cleaned = cleaned.replace(
+      /([A-Za-z0-9_]+(?:\[[^\]]*\]|\{[^}]*\})*\s*(?:-->|==>|-\.->|---)\s*(?:\|[^|]*\|)?\s*[A-Za-z0-9_]+(?:\[[^\]]*\]|\{[^}]*\})*)\s{2,}([A-Za-z0-9_]+(?:\[[^\]]*\]|\{[^}]*\})*\s*(?:-->|==>|-\.->|---)\s*(?:\|[^|]*\|)?\s*[A-Za-z0-9_]+(?:\[[^\]]*\]|\{[^}]*\})*)/g,
+      "$1\n    $2",
+    )
+
     // Fix malformed flow syntax: remove leading | from flow lines
     // Pattern: | NodeA --> | label | NodeB |
     cleaned = cleaned.replace(
-      /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})*)\s*(-->|==>|-\.->|---)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})*)\s*\|?\s*$/gm,
+      /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|\$[^)]*\$|\{[^}]*\})*)\s*(-->|==>|-\.->|---)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|\$[^)]*\$|\{[^}]*\})*)\s*\|?\s*$/gm,
       (match, sourceNode, arrow, label, targetNode) => {
         // Clean up the label and target
         const cleanLabel = label.trim()
@@ -40,7 +47,7 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
 
     // Fix simpler malformed lines: | NodeA --> NodeB |
     cleaned = cleaned.replace(
-      /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})*)\s*(-->|==>|-\.->|---)\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})*)\s*\|?\s*$/gm,
+      /^\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|\$[^)]*\$|\{[^}]*\})*)\s*(-->|==>|-\.->|---)\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|\$[^)]*\$|\{[^}]*\})*)\s*\|?\s*$/gm,
       (match, sourceNode, arrow, targetNode) => {
         return `    ${sourceNode} ${arrow} ${targetNode}`
       },

@@ -259,9 +259,9 @@ This should render as an interactive diagram with visual/code toggle.`,
               </p>
             </div>
             <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" onClick={testMermaidDiagram} className="text-xs">
+              {/*<Button variant="outline" size="sm" onClick={testMermaidDiagram} className="text-xs">
                 Test Mermaid
-              </Button>
+              </Button>*/}
               <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)} className="p-2">
                 <Settings className="h-4 w-4" />
               </Button>

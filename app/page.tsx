@@ -20,13 +20,12 @@ interface Message {
 
 // Common Cloudflare AI models
 const AVAILABLE_MODELS = [
-  { id: "@cf/meta/llama-3.1-8b-instruct", name: "Llama 3.1 8B (Current)" },
-  { id: "@cf/meta/llama-3.1-70b-instruct", name: "Llama 3.1 70B" },
-  { id: "@cf/meta/llama-3-8b-instruct", name: "Llama 3 8B" },
-  { id: "@cf/mistral/mistral-7b-instruct-v0.1", name: "Mistral 7B" },
-  { id: "@cf/microsoft/phi-2", name: "Microsoft Phi-2" },
-  { id: "@cf/qwen/qwen1.5-14b-chat-awq", name: "Qwen 1.5 14B" },
-  { id: "@cf/google/gemma-7b-it", name: "Google Gemma 7B" },
+  { id: "@cf/meta/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B 16E Instruct (Current)" },
+  { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct FP8 Fast" },
+  { id: "@cf/google/gemma-3-12b-it", name: "Gemma 3 12B" },
+  { id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", name: "Deepseek R1 Distill QWEN 32B" },
+  { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", name: "Mistral Small 3.1 24B Instruct" },
+
 ]
 
 const MAX_INPUT_CHARS = 8000 // Cloudflare Worker AI input limit

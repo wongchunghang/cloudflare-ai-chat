@@ -75,20 +75,13 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  SANITISERS                                                        */
+  /*  SANITISERS FOR VISUAL RENDERING                                  */
   /* ------------------------------------------------------------------ */
 
-  // 1️⃣  Ensure a line-break after the diagram directive
-  const directiveBreak = (src: string) =>
-    src.replace(
-      /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/im,
-      (m) => `${m}\n`,
-    )
-
-  // 2️⃣  Fix malformed table-like Mermaid syntax
-  function fixMalformedTableSyntax(src: string) {
+  // 1️⃣  Remove all Markdown table syntax completely
+  function removeAllTableSyntax(src: string) {
     const lines = src.split("\n")
-    const fixedLines = []
+    const cleanLines = []
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim()
@@ -101,56 +94,49 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
         continue
       }
 
-      // Fix malformed table-style lines like "| B --> | Yes | C[...] |"
-      if (/^\|\s*[A-Za-z0-9_]+.*-->\s*\|.*\|.*\|?\s*$/.test(line)) {
-        // Extract the parts: node, arrow, label, target
-        const match = line.match(
-          /^\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*(-->|==>|-\.->|-\.)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|?\s*$/,
-        )
+      // Skip table-style lines like "| B --> | Yes | C[...] |"
+      if (/^\|\s*.*\|.*\|.*\|?\s*$/.test(line) && !line.includes("---")) {
+        // Convert table syntax to proper Mermaid connections
+        const cells = line
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter((cell) => cell.length > 0)
 
-        if (match) {
-          const [, sourceNode, arrow, label, targetNode] = match
-          const cleanLabel = label.trim()
-          const cleanTarget = targetNode.trim()
+        if (cells.length >= 3) {
+          // Try to extract: source --> |label| target
+          const [source, label, target] = cells
 
-          // Convert to proper Mermaid syntax
-          fixedLines.push(`    ${sourceNode} ${arrow} |${cleanLabel}| ${cleanTarget}`)
-          continue
+          // Check if source contains arrow syntax
+          if (source.includes("-->")) {
+            const parts = source.split("-->").map((p) => p.trim())
+            if (parts.length === 2) {
+              const sourceNode = parts[0]
+              const targetNode = target
+              const edgeLabel = label
+
+              cleanLines.push(`    ${sourceNode} --> |${edgeLabel}| ${targetNode}`)
+              continue
+            }
+          }
         }
+
+        // If we can't parse it properly, skip the table line entirely
+        continue
       }
 
-      // Fix simpler malformed lines like "| A --> | label | B |"
-      if (/^\|\s*[A-Za-z0-9_]+\s*-->\s*\|.*\|.*\|?\s*$/.test(line)) {
-        const match = line.match(
-          /^\|\s*([A-Za-z0-9_]+)\s*(-->|==>|-\.->|-\.)\s*\|\s*([^|]+)\s*\|\s*([A-Za-z0-9_]+(?:\[[^\]]*\]|$$[^)]*$$|\{[^}]*\})?)\s*\|?\s*$/,
-        )
-
-        if (match) {
-          const [, sourceNode, arrow, label, targetNode] = match
-          const cleanLabel = label.trim()
-          const cleanTarget = targetNode.trim()
-
-          fixedLines.push(`    ${sourceNode} ${arrow} |${cleanLabel}| ${cleanTarget}`)
-          continue
-        }
-      }
-
-      // Keep valid Mermaid lines as-is (but clean up any stray pipes)
-      let cleanLine = line
-
-      // Remove leading/trailing pipes from otherwise valid lines
-      if (line.startsWith("|") && line.endsWith("|") && !line.includes("-->")) {
-        cleanLine = line.replace(/^\|\s*/, "").replace(/\s*\|$/, "")
-      }
-
-      // Only add non-empty lines
-      if (cleanLine.trim()) {
-        fixedLines.push(cleanLine)
-      }
+      // Keep valid Mermaid lines
+      cleanLines.push(line)
     }
 
-    return fixedLines.join("\n")
+    return cleanLines.join("\n")
   }
+
+  // 2️⃣  Ensure a line-break after the diagram directive
+  const directiveBreak = (src: string) =>
+    src.replace(
+      /^(?:\s)*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|gantt)\s+[A-Za-z]{2}(?=[^\n])/im,
+      (m) => `${m}\n`,
+    )
 
   // 3️⃣  Remove invalid pipes that appear directly after nodes
   function removeInvalidNodePipes(src: string) {
@@ -203,11 +189,11 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       .join("\n")
   }
 
-  // Combined sanitiser
-  const sanitise = (raw: string) => {
+  // Combined sanitiser for visual rendering
+  const sanitiseForVisual = (raw: string) => {
     let result = raw.replace(/\r\n?/g, "\n")
+    result = removeAllTableSyntax(result) // Remove table syntax FIRST
     result = directiveBreak(result)
-    result = fixMalformedTableSyntax(result)
     result = removeInvalidNodePipes(result)
     result = normaliseEdgePipes(result)
     result = safeRoundNodes(result)
@@ -239,7 +225,11 @@ export function MermaidDiagram({ code, title }: MermaidDiagramProps) {
       setError(null)
       setIsLoading(true)
 
-      const prepared = sanitise(code)
+      const prepared = sanitiseForVisual(code)
+      console.log("=== MERMAID VISUAL SANITIZATION ===")
+      console.log("Original:", code)
+      console.log("Sanitized for visual:", prepared)
+      console.log("=== END SANITIZATION ===")
 
       try {
         const mermaid = (await import("mermaid")).default
